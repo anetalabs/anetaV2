@@ -33,6 +33,7 @@ export class bitcoinWatcher{
     constructor(){
         this.client = new BitcoinCore(config.bitcoinRPC);
         this.address =  Array.from({length: config.paymentPaths}, (_, index) => index).map((index) => this.getAddress(index))
+        console.log(this.address)
         this.watcherSync()
         this.watcherKey = ECPair.fromPrivateKey(Buffer.from(config.BTCPrivKey,'hex'), { network: bitcoin.networks[config.network] })
 
@@ -83,10 +84,52 @@ export class bitcoinWatcher{
         return isSynced;
     }
 
-    reddemIndex = async (indexs: number[]) => {
+    withdrawProfits = async (amount: number) => {
         const txb = new bitcoin.Psbt({network : bitcoin.networks[config.network] });
         let total = 0;
-        let txSize = 10 + 34;
+        let txSize = 10 + 34 * 2; // Replace numOutputs with the number of outputs
+        const nonWitnessData = 41;
+        const witnessData = config.m * 73 + config.guardiansAngels.length * 34 + 3 + config.m + config.guardiansAngels.length * 34 + 1;
+        const inputSize = nonWitnessData + Math.ceil(witnessData / 4);
+        const utxos = this.utxos[0].utxos;
+        const redeemScript = Buffer.from(this.getRedeemScript(0), 'hex');
+        for (let i = 0; i < utxos.length; i++) {
+            total += Math.round(utxos[i].amount * 100000000) ;
+            txb.addInput({
+                hash: utxos[i].txid,
+                index: utxos[i].vout,
+                witnessUtxo: {
+                    script: Buffer.from(utxos[i].scriptPubKey, 'hex'),
+                    value: Math.round(utxos[i].amount * 100_000_000),
+                },
+                witnessScript: redeemScript,
+            });
+        }
+
+        txSize += utxos.length * inputSize;
+        console.log(txSize)
+        if (total === 0) throw new Error('No UTXOs to redeem');
+        const feerate = await this.getFee() ;
+        const fee = Math.round( 100_000 * feerate  * txSize) ; //round to 8 decimal places
+        const amountToSend = total - fee;
+        if (amountToSend < amount) throw new Error('Not enough funds');
+        txb.addOutput({address: this.address[0], value: total  - amount });
+        txb.addOutput({address: config.BTCadminAddress, value: amount - fee });
+        txb.signAllInputs(this.watcherKey);
+        txb.finalizeAllInputs();
+        const tx = txb.extractTransaction();
+        const txHex = tx.toHex();
+        const resault = await this.client.sendRawTransaction(txHex);
+        console.log(resault);
+    
+
+    }
+
+    reddemIndex = async (indexs: number[]) => {
+
+        const txb = new bitcoin.Psbt({network : bitcoin.networks[config.network] });
+        let total = 0;
+        let txSize = 10 + 35;
         const nonWitnessData = 41;
         const witnessData = config.m * 73 + config.guardiansAngels.length * 34 + 3 + config.m + config.guardiansAngels.length * 34 + 1;
         const inputSize = nonWitnessData + Math.ceil(witnessData / 4);   
@@ -114,12 +157,9 @@ export class bitcoinWatcher{
         });
 
         if (total === 0) throw new Error('No UTXOs to redeem');
-        console.log(txSize);
-        const feerate = await this.getFee();
+        const feerate = await this.getFee() ;
     
-        console.log(feerate);
         const fee = Math.round( 100_000 * feerate  * txSize) ; //round to 8 decimal places 
-        console.log(fee,total);   
         const amount = total - fee;
         
         txb.addOutput({address: this.address[0], value: amount });
@@ -130,7 +170,6 @@ export class bitcoinWatcher{
 
         const txHex = tx.toHex();
         const resault = await this.client.sendRawTransaction(txHex);
-        console.log(resault);
         
     }
 
@@ -164,7 +203,7 @@ export class bitcoinWatcher{
             address,
             utxos: utxosByAddress[address] || []
         }));
-        this.utxos.map((address) => console.log(address.utxos))
+     //   this.utxos.map((address) => console.log(address.utxos))
     }
 
     getAddress(index: number){
