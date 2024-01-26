@@ -31,11 +31,11 @@ export class bitcoinWatcher{
     isSynced: boolean = false;
     watcherKey: any; 
     constructor(){
-        this.client = new BitcoinCore(config.bitcoinRPC);
-        this.address =  Array.from({length: config.paymentPaths}, (_, index) => index).map((index) => this.getAddress(index))
+        this.client = new BitcoinCore(config.Bitcoin.bitcoinRPC);
+        this.address =  Array.from({length: config.Bitcoin.paymentPaths}, (_, index) => index).map((index) => this.getAddress(index))
         console.log(this.address)
         this.watcherSync()
-        this.watcherKey = ECPair.fromPrivateKey(Buffer.from(config.BTCPrivKey,'hex'), { network: bitcoin.networks[config.network] })
+        this.watcherKey = ECPair.fromPrivateKey(Buffer.from(config.Bitcoin.BTCPrivKey,'hex'), { network: bitcoin.networks[config.Bitcoin.network] })
 
     }
 
@@ -85,7 +85,7 @@ export class bitcoinWatcher{
     }
 
     withdrawProfits = async (amount: number) => {
-        const txb = new bitcoin.Psbt({network : bitcoin.networks[config.network] });
+        const txb = new bitcoin.Psbt({network : bitcoin.networks[config.Bitcoin.network] });
         let total = 0;
         let txSize = 10 + 34 * 2; // Replace numOutputs with the number of outputs
         const nonWitnessData = 41;
@@ -114,7 +114,7 @@ export class bitcoinWatcher{
         const amountToSend = total - fee;
         if (amountToSend < amount) throw new Error('Not enough funds');
         txb.addOutput({address: this.address[0], value: total  - amount });
-        txb.addOutput({address: config.BTCadminAddress, value: amount - fee });
+        txb.addOutput({address: config.Bitcoin.BTCadminAddress, value: amount - fee });
         txb.signAllInputs(this.watcherKey);
         txb.finalizeAllInputs();
         const tx = txb.extractTransaction();
@@ -127,7 +127,7 @@ export class bitcoinWatcher{
 
     reddemIndex = async (indexs: number[]) => {
 
-        const txb = new bitcoin.Psbt({network : bitcoin.networks[config.network] });
+        const txb = new bitcoin.Psbt({network : bitcoin.networks[config.Bitcoin.network] });
         let total = 0;
         let txSize = 10 + 35;
         const nonWitnessData = 41;
@@ -187,7 +187,7 @@ export class bitcoinWatcher{
         const height = await this.getHeight()
         await this.client.command('scantxoutset', 'abort', descriptors)
         const resault =  await this.client.command('scantxoutset', 'start', descriptors)
-        const utxosRaw =  resault.unspents.map((utxo) => Object.assign( {}, utxo)).filter((utxo) => utxo.height <= height - config.BTCFinality);
+        const utxosRaw =  resault.unspents.map((utxo) => Object.assign( {}, utxo)).filter((utxo) => utxo.height <= height - config.Bitcoin.Finality);
         // Organize utxos by address
         const utxosByAddress = utxosRaw.reduce((acc, utxo) => {
             const address = utxo.desc.split('(')[1].split(')')[0];
@@ -212,8 +212,8 @@ export class bitcoinWatcher{
         const pubkeys = HexKeys.map(key => Buffer.from(key, 'hex'));
         const p2shAddress = bitcoin.payments.p2wsh({
             redeem: bitcoin.payments.p2ms({ m: config.m , pubkeys ,
-            network: bitcoin.networks[config.network], }),
-            network: bitcoin.networks[config.network],
+            network: bitcoin.networks[config.Bitcoin.network], }),
+            network: bitcoin.networks[config.Bitcoin.network],
         });
     
         return p2shAddress.address; 
@@ -226,8 +226,8 @@ export class bitcoinWatcher{
         const pubkeys = HexKeys.map(key => Buffer.from(key, 'hex'));
         const p2shAddress = bitcoin.payments.p2wsh({
             redeem: bitcoin.payments.p2ms({ m: config.m , pubkeys ,
-            network: bitcoin.networks[config.network], }),
-            network: bitcoin.networks[config.network],
+            network: bitcoin.networks[config.Bitcoin.network], }),
+            network: bitcoin.networks[config.Bitcoin.network],
         });
         return p2shAddress.redeem.output.toString('hex');
     }

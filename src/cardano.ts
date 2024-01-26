@@ -1,7 +1,7 @@
 import * as config from '../config.json';
 import { MongoClient } from "mongodb";
 import WebSocket from 'ws';
-
+import lucid from 'lucid-cardano'
 
 
 
@@ -11,9 +11,9 @@ export class cardanoWatcher{
 
 
     constructor(){
-        this.mongo = new MongoClient(config.mongo.connectionString);
+        this.mongo = new MongoClient(config.Cardano.mongo.connectionString);
 
-        this.ogmiosClient =  new WebSocket(config.ogmios.host);
+        this.ogmiosClient =  new WebSocket(config.Cardano.ogmios.host);
 
         console.log("cardano watcher")
     }
