@@ -1,8 +1,8 @@
 import BitcoinCore from "bitcoin-core"
 import * as bitcoin from 'bitcoinjs-lib';
-import ECPairFactory  from 'ecpair'
+import {ECPairFactory}  from 'ecpair'
 import * as ecc  from 'tiny-secp256k1'
-import * as config from '../config.json';
+import config from '../config.json' assert { type: 'json' };
 import { isAsyncFunction } from "util/types";
 import { compile } from "bitcoinjs-lib/src/script";
 import { EventEmitter } from 'events';
@@ -15,6 +15,7 @@ type addressUtxos = {
     address: string,
     utxos: utxo[]
 }
+
 
 type utxo = {
     txid: string,
@@ -30,8 +31,11 @@ export class bitcoinWatcher{
     utxos: addressUtxos[];
     isSynced: boolean = false;
     watcherKey: any; 
+    
     constructor(){
-        this.client = new BitcoinCore(config.Bitcoin.bitcoinRPC);
+        console.log("bitcoin watcher")
+
+       this.client = new BitcoinCore(config.Bitcoin.bitcoinRPC);
         this.address =  Array.from({length: config.Bitcoin.paymentPaths}, (_, index) => index).map((index) => this.getAddress(index))
         console.log(this.address)
         this.watcherSync()

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Cardano-bitcoin-Bridging",
   "main": "index.js",
+  "type" : "module",
   "scripts": {
     "clean": "rimraf dist",
     "start": "npm-run-all --parallel watch:build watch:server --print-label",
@@ -23,7 +24,7 @@
     "bitcoin-core": "^4.1.0",
     "bitcoinjs-lib": "^6.1.5",
     "ecpair": "^2.1.0",
-    "lucid-cardano": "^0.10.7",
+    "lucid-cardano": "0.10.6",
     "mongodb": "^6.3.0",
     "tiny-secp256k1": "^2.2.3",
     "ws": "^8.16.0"
