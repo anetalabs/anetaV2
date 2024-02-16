@@ -2,7 +2,7 @@
     "compilerOptions": {
       "module": "esnext",
       "esModuleInterop": true,
-      "target": "ES2017",
+      "target": "ES2020",
       "moduleResolution": "node",
       "sourceMap": true,
       "rootDir": "./src",

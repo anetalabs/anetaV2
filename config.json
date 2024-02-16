@@ -14,20 +14,24 @@
         "paymentPaths" : 10
     },
     "Cardano":{
-        "network": "preprod",
+        "network": "preview",
         "ogmios": {
             "host": "http://ogmios-preprod6-api-mwallet-e048ec.us1.demeter.run"
         },
         "mongo": {
-            "connectionString": "mongodb://localhost:27017/ogmios"
+            "connectionString": "mongodb://127.0.0.1:27017"
         },
         "lucid":{
             "provider": {
                 "type": "blockfrost",
-                "host": "https://passthrough.broclan.io",
-                "projectId": "preprod"
-            }
+                "host": "https://blockfrost-preview-api-mwallet-e048ec.us1.demeter.run"
+                        }
+        },
+        "utxoRpc": {
+            "host": "https://preview.utxorpc-v0.demeter.run",
+            "key": "dmtr_utxorpc1rutw90zm5ucx4lg9tj56nymnq5j98zlf"
         }
+
 
     },
     "guardiansAngels":[

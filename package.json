@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Cardano-bitcoin-Bridging",
   "main": "index.js",
-  "type" : "module",
+  "type": "module",
   "scripts": {
     "clean": "rimraf dist",
     "start": "npm-run-all --parallel watch:build watch:server --print-label",
@@ -21,6 +21,7 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@utxorpc/sdk": "^0.1.0",
     "bitcoin-core": "^4.1.0",
     "bitcoinjs-lib": "^6.1.5",
     "ecpair": "^2.1.0",
