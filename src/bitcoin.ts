@@ -3,7 +3,9 @@ import * as bitcoin from 'bitcoinjs-lib';
 import {ECPairFactory}  from 'ecpair'
 import * as ecc  from 'tiny-secp256k1'
 import { EventEmitter } from 'events';
-import {bitcoinConfig} from "./types.js"
+import {bitcoinConfig, topology, secretsConfig} from "./types.js"
+import * as bip39 from 'bip39';
+import {BIP32Factory} from 'bip32';
 
 const ECPair =  ECPairFactory(ecc);
 export const utxoEventEmitter = new EventEmitter();
@@ -31,10 +33,10 @@ export class bitcoinWatcher{
     private isSynced: boolean = false;
     private watcherKey: any; 
     private config: bitcoinConfig ;
-    private topology: any;
+    private topology: topology;
 
 
-    constructor(config : bitcoinConfig, topology){
+    constructor(config : bitcoinConfig, topology : topology, secrets : secretsConfig){
         console.log("bitcoin watcher")
         this.config = config
         this.topology = topology
@@ -42,7 +44,14 @@ export class bitcoinWatcher{
         this.address =  Array.from({length: config.paymentPaths}, (_, index) => index).map((index) => this.getAddress(index))
         console.log(this.address)
         this.watcherSync()
-        this.watcherKey = ECPair.fromPrivateKey(Buffer.from(config.BTCPrivKey,'hex'), { network: bitcoin.networks[config.network] })
+
+        const seed = bip39.mnemonicToSeedSync(secrets.seed);
+        const bip32 = BIP32Factory(ecc);
+        const root = bip32. fromSeed(seed);
+        const path = "m/44'/0'/0'/0/0"; // This is the BIP44 path for the first address in the first account of a Bitcoin wallet
+        const node = root.derivePath(path);
+
+        this.watcherKey = ECPair.fromPrivateKey(Buffer.from(node.privateKey.toString('hex'),'hex'), { network: bitcoin.networks[config.network] })
 
     }
 

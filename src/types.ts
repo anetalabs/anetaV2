@@ -14,3 +14,42 @@ export  type bitcoinConfig =
     "paymentPaths" : number
 }
 
+export type topology = {
+
+    
+        "topology" : [
+            {"name": string ,
+              "ip": string,
+              "AdaPkHash": string,
+              "btcKey": string},
+        ],    
+        "m": number
+}
+
+export type cardanoConfig = {
+    mnemonic: Array<string>
+    network: string
+    mintingScript: {
+      keyHash: string
+      type: string
+    }
+    paymentAddress: string
+    mongo: {
+      connectionString: string
+    }
+    lucid: {
+      provider: {
+        type: string
+        host: string
+      }
+    }
+    utxoRpc: {
+      host: string
+      key: string
+    }
+  }
+
+
+export type secretsConfig ={
+    "seed" : string
+}

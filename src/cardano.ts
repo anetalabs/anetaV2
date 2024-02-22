@@ -1,18 +1,20 @@
 import { MongoClient } from "mongodb";
 import * as Lucid  from 'lucid-cardano'
 import { CardanoSyncClient , CardanoBlock } from "@utxorpc/sdk";
- 
+import {cardanoConfig, topology, secretsConfig} from "./types.js"
+
 // Initialize the UtxoRpc client
  
 
 
 export class cardanoWatcher{
-    mongo: MongoClient;
-    lucid: Lucid.Lucid;
-    rcpClient : CardanoSyncClient;
-    mintingScript: Lucid.Script;
+    private mongo: MongoClient;
+    private lucid: Lucid.Lucid;
+    private rcpClient : CardanoSyncClient;
+    private mintingScript: Lucid.Script;
+    private topology: topology;
 
-    constructor(config){
+    constructor(config: cardanoConfig, topology: topology, secrets: secretsConfig ){
         this.rcpClient = new CardanoSyncClient({ uri : "https://preview.utxorpc-v0.demeter.run",  headers: {"dmtr-api-key": "dmtr_utxorpc1rutw90zm5ucx4lg9tj56nymnq5j98zlf"}} );
         let mongoClient = new MongoClient(config.mongo.connectionString);
         mongoClient.connect()
@@ -26,7 +28,7 @@ export class cardanoWatcher{
             });
         (async () => {
            this.lucid = await Lucid.Lucid.new(new Lucid.Blockfrost(config.lucid.provider.host), (config.network.charAt(0).toUpperCase() + config.network.slice(1)) as Lucid.Network);
-           this.lucid.selectWalletFromSeed(config.mnemonic.join(" "));
+           this.lucid.selectWalletFromSeed(secrets.seed);
            console.log(this.lucid.utils.getAddressDetails( await this.lucid.wallet.address()));
            this.mintingScript = this.lucid.utils.nativeScriptFromJson(config.mintingScript as Lucid.NativeScript);
            console.log("Minting Script Address:", this.mintingScript);
