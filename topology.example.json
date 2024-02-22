@@ -1,0 +1,9 @@
+{
+    
+    "topology" : [
+        {"name": "Guardian Angel 1","ip": "" , "AdaPkHash" : "", "btcKey" : "025fa4d1117eee4358824795562643dd315b9db189271995cf51d45465a78ca5ef"},
+        {"name": "Guardian Angel 2","ip": "" , "AdaPkHash" : "", "btcKey" : "033118ee8630cdc51e5ba93e77ea099b0cc77c67875778d02f1dfe7eeddef34e47"}
+    ],    
+    "m":1
+
+}

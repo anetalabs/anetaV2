@@ -2,10 +2,8 @@ import BitcoinCore from "bitcoin-core"
 import * as bitcoin from 'bitcoinjs-lib';
 import {ECPairFactory}  from 'ecpair'
 import * as ecc  from 'tiny-secp256k1'
-import config from '../config.json' assert { type: 'json' };
-import { isAsyncFunction } from "util/types";
-import { compile } from "bitcoinjs-lib/src/script";
 import { EventEmitter } from 'events';
+import {bitcoinConfig} from "./types.js"
 
 const ECPair =  ECPairFactory(ecc);
 export const utxoEventEmitter = new EventEmitter();
@@ -25,21 +23,26 @@ type utxo = {
     height: number
 }
 
-export class bitcoinWatcher{
-    client: BitcoinCore;
-    address: string[];
-    utxos: addressUtxos[];
-    isSynced: boolean = false;
-    watcherKey: any; 
-    
-    constructor(){
-        console.log("bitcoin watcher")
 
-       this.client = new BitcoinCore(config.Bitcoin.bitcoinRPC);
-        this.address =  Array.from({length: config.Bitcoin.paymentPaths}, (_, index) => index).map((index) => this.getAddress(index))
+export class bitcoinWatcher{
+    private client: BitcoinCore;
+    private address: string[];
+    private utxos: addressUtxos[];
+    private isSynced: boolean = false;
+    private watcherKey: any; 
+    private config: bitcoinConfig ;
+    private topology: any;
+
+
+    constructor(config : bitcoinConfig, topology){
+        console.log("bitcoin watcher")
+        this.config = config
+        this.topology = topology
+        this.client = new BitcoinCore(config.bitcoinRPC);
+        this.address =  Array.from({length: config.paymentPaths}, (_, index) => index).map((index) => this.getAddress(index))
         console.log(this.address)
         this.watcherSync()
-        this.watcherKey = ECPair.fromPrivateKey(Buffer.from(config.Bitcoin.BTCPrivKey,'hex'), { network: bitcoin.networks[config.Bitcoin.network] })
+        this.watcherKey = ECPair.fromPrivateKey(Buffer.from(config.BTCPrivKey,'hex'), { network: bitcoin.networks[config.network] })
 
     }
 
@@ -89,11 +92,11 @@ export class bitcoinWatcher{
     }
 
     withdrawProfits = async (amount: number) => {
-        const txb = new bitcoin.Psbt({network : bitcoin.networks[config.Bitcoin.network] });
+        const txb = new bitcoin.Psbt({network : bitcoin.networks[this.config.network] });
         let total = 0;
         let txSize = 10 + 34 * 2; // Replace numOutputs with the number of outputs
         const nonWitnessData = 41;
-        const witnessData = config.m * 73 + config.guardiansAngels.length * 34 + 3 + config.m + config.guardiansAngels.length * 34 + 1;
+        const witnessData = this.topology.m * 73 + this.topology.topology.length * 34 + 3 + this.topology.m + this.topology.topology.length * 34 + 1;
         const inputSize = nonWitnessData + Math.ceil(witnessData / 4);
         const utxos = this.utxos[0].utxos;
         const redeemScript = Buffer.from(this.getRedeemScript(0), 'hex');
@@ -118,7 +121,7 @@ export class bitcoinWatcher{
         const amountToSend = total - fee;
         if (amountToSend < amount) throw new Error('Not enough funds');
         txb.addOutput({address: this.address[0], value: total  - amount });
-        txb.addOutput({address: config.Bitcoin.BTCadminAddress, value: amount - fee });
+        txb.addOutput({address: this.config.BTCadminAddress, value: amount - fee });
         txb.signAllInputs(this.watcherKey);
         txb.finalizeAllInputs();
         const tx = txb.extractTransaction();
@@ -131,11 +134,11 @@ export class bitcoinWatcher{
 
     reddemIndex = async (indexs: number[]) => {
 
-        const txb = new bitcoin.Psbt({network : bitcoin.networks[config.Bitcoin.network] });
+        const txb = new bitcoin.Psbt({network : bitcoin.networks[this.config.network] });
         let total = 0;
         let txSize = 10 + 35;
         const nonWitnessData = 41;
-        const witnessData = config.m * 73 + config.guardiansAngels.length * 34 + 3 + config.m + config.guardiansAngels.length * 34 + 1;
+        const witnessData = this.topology.m * 73 + this.topology.topology.length * 34 + 3 + this.topology.m + this.topology.topology.length * 34 + 1;
         const inputSize = nonWitnessData + Math.ceil(witnessData / 4);   
 
 
@@ -191,7 +194,7 @@ export class bitcoinWatcher{
         const height = await this.getHeight()
         await this.client.command('scantxoutset', 'abort', descriptors)
         const resault =  await this.client.command('scantxoutset', 'start', descriptors)
-        const utxosRaw =  resault.unspents.map((utxo) => Object.assign( {}, utxo)).filter((utxo) => utxo.height <= height - config.Bitcoin.Finality);
+        const utxosRaw =  resault.unspents.map((utxo) => Object.assign( {}, utxo)).filter((utxo) => utxo.height <= height - this.config.Finality);
         // Organize utxos by address
         const utxosByAddress = utxosRaw.reduce((acc, utxo) => {
             const address = utxo.desc.split('(')[1].split(')')[0];
@@ -211,13 +214,13 @@ export class bitcoinWatcher{
     }
 
     getAddress(index: number){
-        const HexKeys =  config.guardiansAngels.map((guardian) => guardian.btcKey);
+        const HexKeys =  this.topology.topology.map((guardian) => guardian.btcKey);
         if (index !== 0) HexKeys.push(this.fillerKey(index));
         const pubkeys = HexKeys.map(key => Buffer.from(key, 'hex'));
         const p2shAddress = bitcoin.payments.p2wsh({
-            redeem: bitcoin.payments.p2ms({ m: config.m , pubkeys ,
-            network: bitcoin.networks[config.Bitcoin.network], }),
-            network: bitcoin.networks[config.Bitcoin.network],
+            redeem: bitcoin.payments.p2ms({ m: this.topology.m , pubkeys ,
+            network: bitcoin.networks[this.config.network], }),
+            network: bitcoin.networks[this.config.network],
         });
     
         return p2shAddress.address; 
@@ -225,13 +228,13 @@ export class bitcoinWatcher{
         
     getRedeemScript(index: number){
 
-        const HexKeys =  config.guardiansAngels.map((guardian) => guardian.btcKey);
+        const HexKeys =  this.topology.topology.map((guardian) => guardian.btcKey);
         if (index !== 0) HexKeys.push(this.fillerKey(index));
         const pubkeys = HexKeys.map(key => Buffer.from(key, 'hex'));
         const p2shAddress = bitcoin.payments.p2wsh({
-            redeem: bitcoin.payments.p2ms({ m: config.m , pubkeys ,
-            network: bitcoin.networks[config.Bitcoin.network], }),
-            network: bitcoin.networks[config.Bitcoin.network],
+            redeem: bitcoin.payments.p2ms({ m: this.topology.m , pubkeys ,
+            network: bitcoin.networks[this.config.network], }),
+            network: bitcoin.networks[this.config.network],
         });
         return p2shAddress.redeem.output.toString('hex');
     }

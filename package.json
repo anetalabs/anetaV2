@@ -27,6 +27,7 @@
     "ecpair": "^2.1.0",
     "lucid-cardano": "0.10.6",
     "mongodb": "^6.3.0",
+    "socket.io": "^4.7.4",
     "tiny-secp256k1": "^2.2.3",
     "ws": "^8.16.0"
   }

@@ -1,8 +1,6 @@
-import config from '../config.json' assert { type: 'json' };
 import { MongoClient } from "mongodb";
 import * as Lucid  from 'lucid-cardano'
 import { CardanoSyncClient , CardanoBlock } from "@utxorpc/sdk";
-import { start } from 'repl';
  
 // Initialize the UtxoRpc client
  
@@ -12,10 +10,11 @@ export class cardanoWatcher{
     mongo: MongoClient;
     lucid: Lucid.Lucid;
     rcpClient : CardanoSyncClient;
+    mintingScript: Lucid.Script;
 
-    constructor(){
+    constructor(config){
         this.rcpClient = new CardanoSyncClient({ uri : "https://preview.utxorpc-v0.demeter.run",  headers: {"dmtr-api-key": "dmtr_utxorpc1rutw90zm5ucx4lg9tj56nymnq5j98zlf"}} );
-        let mongoClient = new MongoClient(config.Cardano.mongo.connectionString);
+        let mongoClient = new MongoClient(config.mongo.connectionString);
         mongoClient.connect()
             .then((client) => {
                 this.mongo = client;
@@ -26,11 +25,25 @@ export class cardanoWatcher{
                 console.error("Failed to connect to MongoDB:", error);
             });
         (async () => {
-           this.lucid = await Lucid.Lucid.new(new Lucid.Blockfrost(config.Cardano.lucid.provider.host), (config.Cardano.network.charAt(0).toUpperCase() + config.Cardano.network.slice(1)) as Lucid.Network);
+           this.lucid = await Lucid.Lucid.new(new Lucid.Blockfrost(config.lucid.provider.host), (config.network.charAt(0).toUpperCase() + config.network.slice(1)) as Lucid.Network);
+           this.lucid.selectWalletFromSeed(config.mnemonic.join(" "));
+           console.log(this.lucid.utils.getAddressDetails( await this.lucid.wallet.address()));
+           this.mintingScript = this.lucid.utils.nativeScriptFromJson(config.mintingScript as Lucid.NativeScript);
+           console.log("Minting Script Address:", this.mintingScript);
         })();
         
 
         console.log("cardano watcher")
+    }
+
+    async getOpenRequests(){
+      //  let openRequests = this.lucid.provider.getUtxos(config.paymentAddress);
+      //  return openRequests;
+    }
+     
+    async getTip(){
+        let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
+        return tip;
     }
 
     async startIndexer() {
@@ -67,12 +80,15 @@ export class cardanoWatcher{
             this.startIndexer();    
         }
     }
+    async handleUndoBlock(block: CardanoBlock){
+     //   await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: block.header.hash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
+        console.log("Undo Block", block.header.hash);
+    }
     
     async handleNewBlock(block: CardanoBlock){
         //Uint8Array(32) to hex
         let blockHash = Buffer.from(block.header.hash).toString('hex');
-        console.log(blockHash);
         await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
-        console.log("New Block",blockHash, block.header.slot,  block.header.height);
+        console.info("New Cardano Block",blockHash, block.header.slot,  block.header.height);
     }
 }
