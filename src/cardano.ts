@@ -13,8 +13,10 @@ export class cardanoWatcher{
     private rcpClient : CardanoSyncClient;
     private mintingScript: Lucid.Script;
     private topology: topology;
+    private config: cardanoConfig;
 
     constructor(config: cardanoConfig, topology: topology, secrets: secretsConfig ){
+        this.config = config;
         this.rcpClient = new CardanoSyncClient({ uri : "https://preview.utxorpc-v0.demeter.run",  headers: {"dmtr-api-key": "dmtr_utxorpc1rutw90zm5ucx4lg9tj56nymnq5j98zlf"}} );
         let mongoClient = new MongoClient(config.mongo.connectionString);
         mongoClient.connect()
@@ -39,15 +41,15 @@ export class cardanoWatcher{
     }
 
     async getOpenRequests(){
-      //  let openRequests = this.lucid.provider.getUtxos(config.paymentAddress);
-      //  return openRequests;
+        let openRequests = this.lucid.provider.getUtxos(this.config.paymentAddress);
+        return openRequests;
     }
      
     async getTip(){
         let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
         return tip;
     }
-
+    
     async startIndexer() {
         // get the current tip from the database and start following the tip from there, if there is no tip in the database, start from the genesis block 
         let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
@@ -88,7 +90,6 @@ export class cardanoWatcher{
     }
     
     async handleNewBlock(block: CardanoBlock){
-        //Uint8Array(32) to hex
         let blockHash = Buffer.from(block.header.hash).toString('hex');
         await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
         console.info("New Cardano Block",blockHash, block.header.slot,  block.header.height);

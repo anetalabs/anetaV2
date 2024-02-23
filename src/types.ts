@@ -27,7 +27,6 @@ export type topology = {
 }
 
 export type cardanoConfig = {
-    mnemonic: Array<string>
     network: string
     mintingScript: {
       keyHash: string
@@ -53,3 +52,4 @@ export type cardanoConfig = {
 export type secretsConfig ={
     "seed" : string
 }
+
