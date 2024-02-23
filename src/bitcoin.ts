@@ -214,12 +214,13 @@ export class bitcoinWatcher{
             return acc;
         }, {});
 
+        
         this.utxos = this.address.map((address, index) => ({
             index,
             address,
             utxos: utxosByAddress[address] || []
         }));
-     //   this.utxos.map((address) => console.log(address.utxos))
+        this.utxos.map((address) => console.log(address.utxos))
     }
 
     getAddress(index: number){

@@ -15,7 +15,7 @@ async function main() {
     const topology =  JSON.parse((await readFile(args.topology || './topology.example.json')).toString());
     const secrets = JSON.parse((await  readFile(args.secrets || './secrets.example.json')).toString() );
     const watcher = new bitcoinWatcher(bitcoinConfig, topology, secrets)
-    const ADAWatcher = new cardanoWatcher(cardanoConfig, topology, secrets)
+  //  const ADAWatcher = new cardanoWatcher(cardanoConfig, topology, secrets)
 
        // while(!watcher.inSycn()){
        //     await new Promise((resolve) => setTimeout(resolve, LOOP_INTERVAL));
