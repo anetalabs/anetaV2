@@ -7,9 +7,9 @@
   "scripts": {
     "clean": "rimraf dist",
     "start": "npm-run-all --parallel watch:build watch:server --print-label",
-    "p2pDev" : "concurrently --kill-others \"tsc --watch\" \"npm run p2p:1\" \"npm run p2p:2\""  ,  
-    "p2p:1" :  "nodemon dist/index.js --watch ./dist --topology testConfigs/distributedhhRaftTests/topology.json --secrets testConfigs/distributedhhRaftTests/Member1/secrets.example.json",
-    "p2p:2" :  "nodemon dist/index.js --watch ./dist --topology testConfigs/distributedhhRaftTests/topology.json --secrets testConfigs/distributedhhRaftTests/Member2/secrets.example.json",
+    "p2pDev": "concurrently --kill-others \"tsc --watch\" \"npm run p2p:1\" \"npm run p2p:2\"",
+    "p2p:1": "nodemon dist/index.js --watch ./dist --topology testConfigs/distributedhhRaftTests/topology.json --secrets testConfigs/distributedhhRaftTests/Member1/secrets.example.json",
+    "p2p:2": "nodemon dist/index.js --watch ./dist --topology testConfigs/distributedhhRaftTests/topology.json --secrets testConfigs/distributedhhRaftTests/Member2/secrets.example.json",
     "watch:build": "tsc --watch",
     "watch:server": "nodemon dist/index.js --watch ./dist"
   },

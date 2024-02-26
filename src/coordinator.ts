@@ -1,5 +1,8 @@
 import { cardanoWatcher } from "./cardano.js"
 import { bitcoinWatcher } from "./bitcoin.js";
+import EventEmitter from "events";
+
+export const emmiter = new EventEmitter();
 
 export class coordinator{
     cardanoWatcher: cardanoWatcher
@@ -8,6 +11,9 @@ export class coordinator{
     constructor(cardanoWatcher : cardanoWatcher, bitcoinWatcher : bitcoinWatcher){
         this.cardanoWatcher = cardanoWatcher;
         this.bitcoinWatcher = bitcoinWatcher;
+
+        emmiter.on("newCardanoBlock", this.onNewCardanoBlock);
+        emmiter.on("newBtcBlock", this.onNewBtcBlock.bind(this));
     }
 
     async getOpenRequests(){
@@ -15,10 +21,18 @@ export class coordinator{
         return openRequests;
     }
 
-    async onNewBtcBlock(){
-        let openRequests = await this.getOpenRequests();
-        console.log(openRequests);
+    async onNewCardanoBlock(){
+        console.log("New Cardano Block event");
+
+    
     }
+
+    async onNewBtcBlock(){
+        let btcUtxos = await this.bitcoinWatcher.getUtxos();
+
+        console.log(btcUtxos);
+    }
+
     
 
 

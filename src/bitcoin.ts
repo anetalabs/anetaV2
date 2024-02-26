@@ -6,6 +6,7 @@ import { EventEmitter } from 'events';
 import {bitcoinConfig, topology, secretsConfig} from "./types.js"
 import * as bip39 from 'bip39';
 import {BIP32Factory} from 'bip32';
+import { emmiter } from "./coordinator.js";
 
 const ECPair =  ECPairFactory(ecc);
 export const utxoEventEmitter = new EventEmitter();
@@ -65,9 +66,10 @@ export class bitcoinWatcher{
                 console.log("new BTC block: ",currentHeight);
                 lastHeight = currentHeight;
                 await this.getUtxos()
+                emmiter.emit("newBtcBlock");
                 
             }
-        }, 10000); // Check every 5 seconds
+        }, 5000); // Check every 5 seconds
     }
 
     getHeight = async () => {

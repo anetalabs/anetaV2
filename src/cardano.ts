@@ -2,23 +2,22 @@ import { MongoClient } from "mongodb";
 import * as Lucid  from 'lucid-cardano'
 import { CardanoSyncClient , CardanoBlock } from "@utxorpc/sdk";
 import {cardanoConfig, topology, secretsConfig} from "./types.js"
-
-// Initialize the UtxoRpc client
+import {emmiter}  from "./coordinator.js";
  
 
 
 export class cardanoWatcher{
     private mongo: MongoClient;
     private lucid: Lucid.Lucid;
-    private rcpClient : CardanoSyncClient;
     private mintingScript: Lucid.Script;
     private topology: topology;
     private config: cardanoConfig;
+    private cBTCPolicy: Lucid.PolicyId;
 
     constructor(config: cardanoConfig, topology: topology, secrets: secretsConfig ){
         this.config = config;
-        this.rcpClient = new CardanoSyncClient({ uri : "https://preview.utxorpc-v0.demeter.run",  headers: {"dmtr-api-key": "dmtr_utxorpc1rutw90zm5ucx4lg9tj56nymnq5j98zlf"}} );
         let mongoClient = new MongoClient(config.mongo.connectionString);
+         
         mongoClient.connect()
             .then((client) => {
                 this.mongo = client;
@@ -34,6 +33,8 @@ export class cardanoWatcher{
            console.log(this.lucid.utils.getAddressDetails( await this.lucid.wallet.address()));
            this.mintingScript = this.lucid.utils.nativeScriptFromJson(config.mintingScript as Lucid.NativeScript);
            console.log("Minting Script Address:", this.mintingScript);
+           console.log("Minting PolicyId:", this.lucid.utils.mintingPolicyToId(this.mintingScript));
+           this.cBTCPolicy = this.lucid.utils.mintingPolicyToId(this.mintingScript);
         })();
         
 
@@ -45,6 +46,9 @@ export class cardanoWatcher{
         return openRequests;
     }
      
+    async mint(){
+
+    }
     async getTip(){
         let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
         return tip;
@@ -58,14 +62,16 @@ export class cardanoWatcher{
         if(tip){
             tipPoint = [{slot: tip.slot, hash: tip.hash}];
         }
+
+
         console.log("Starting from tip", tipPoint);
-        const stream = this.rcpClient.followTip(tipPoint);
+        const rcpClient = new CardanoSyncClient({ uri : "https://preview.utxorpc-v0.demeter.run",  headers: {"dmtr-api-key": "dmtr_utxorpc1rutw90zm5ucx4lg9tj56nymnq5j98zlf"}} );
+        const stream = rcpClient.followTip(tipPoint);
         try {
         console.log("Starting Indexer");
         for await (const block of stream) {
             switch (block.action) { 
                 case "apply":
-
                     await this.handleNewBlock(block.block);
                     break;
                 case "undo":
@@ -91,7 +97,18 @@ export class cardanoWatcher{
     
     async handleNewBlock(block: CardanoBlock){
         let blockHash = Buffer.from(block.header.hash).toString('hex');
+
+        await Promise.all(block.body.tx.map(async (tx) => {
+            block.body.tx.map((tx) => {
+           if(Object.keys(tx.mint).includes(this.cBTCPolicy)){
+               console.log("Minting Transaction", tx);
+           }
+        }
+    
+        )})) ;
+
         await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
-        console.info("New Cardano Block",blockHash, block.header.slot,  block.header.height);
+        emmiter.emit("newCardanoBlock", blockHash, block.header.slot,  block.header.height)
+        console.log("New Cardano Block",blockHash, block.header.slot,  block.header.height);
     }
 }
