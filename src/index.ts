@@ -1,6 +1,7 @@
 import { cardanoWatcher } from "./cardano.js"
 import { bitcoinWatcher } from "./bitcoin.js";
 import { coordinator } from "./coordinator.js";
+import { Communicator } from "./comunicator.js";
 import minimist from 'minimist';
 import fs from 'fs';
 import util from 'util';
@@ -15,11 +16,11 @@ async function main() {
     const bitcoinConfig = JSON.parse((await readFile(args.bitcoinConfig || './bitcoinConfig.example.json')).toString());
     const topology =  JSON.parse((await readFile(args.topology || './topology.example.json')).toString());
     const secrets = JSON.parse((await  readFile(args.secrets || './secrets.example.json')).toString() );
-  
+    const communicator = new Communicator(topology, secrets, args.port || 3000)
 
-  //  const watcher = new bitcoinWatcher(bitcoinConfig, topology, secrets)
-    const ADAWatcher = new cardanoWatcher(cardanoConfig, topology, secrets)
-    const coord = new coordinator(ADAWatcher, null)
+    //const watcher = new bitcoinWatcher(bitcoinConfig, topology, secrets)
+    //const ADAWatcher = new cardanoWatcher(cardanoConfig, topology, secrets)
+    //const coord = new coordinator(ADAWatcher, watcher)
        // while(!watcher.inSycn()){
        //     await new Promise((resolve) => setTimeout(resolve, LOOP_INTERVAL));
         //}

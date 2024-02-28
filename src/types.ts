@@ -1,3 +1,8 @@
+export type nodeStatus = {  
+    "status" : "leader" | "follower" | "candidate" | "monitor" | "learner"
+} 
+
+
 export  type bitcoinConfig =
 {
     "bitcoinRPC" :{
@@ -20,8 +25,10 @@ export type topology = {
         "topology" : [
             {"name": string ,
               "ip": string,
+              "port": number,
               "AdaPkHash": string,
-              "btcKey": string},
+              "btcKey": string
+              },
         ],    
         "m": number
 }

@@ -1,8 +1,7 @@
 {"topology" : [
-    {"name": "Guardian Angel 1","ip": "" , "AdaPkHash" : "26c38175d0b2d9571e1aabb1254c71ceb73516f28ec1d926d75b0ed0", "btcKey" : "02bc84a668a18ca871a596d0d1af4de3b41b359d75644ccbec2f67598cc849953e"},
-    {"name": "Guardian Angel 2","ip": "" , "AdaPkHash" : "0628cf05bd50f61040d90b222788e4322caa037b021060b863f7d54f", "btcKey" : "0376185836be68d96924affff1ddc3996cadb131e488f44d399acddc4021a5458a"},
-    {"name": "Guardian Angel 3","ip": "" , "AdaPkHash" : "ad3adb29e8e3cecedb44e9dda86f3ec1cb6b055b8791352468d6bc70", "btcKey" : "03679c31e01c58ed42b91b4e6b055656f6a6c075ed2dfd2ddfea5f1100e3da6ba5"}
-
+    {"name": "Guardian Angel 1","ip": "localhost" , "port": 3000, "AdaPkHash" : "26c38175d0b2d9571e1aabb1254c71ceb73516f28ec1d926d75b0ed0", "btcKey" : "02bc84a668a18ca871a596d0d1af4de3b41b359d75644ccbec2f67598cc849953e"},
+    {"name": "Guardian Angel 2","ip": "localhost" , "port": 3001, "AdaPkHash" : "0628cf05bd50f61040d90b222788e4322caa037b021060b863f7d54f", "btcKey" : "0376185836be68d96924affff1ddc3996cadb131e488f44d399acddc4021a5458a"},
+    {"name": "Guardian Angel 3","ip": "localhost" , "port": 3002, "AdaPkHash" : "ad3adb29e8e3cecedb44e9dda86f3ec1cb6b055b8791352468d6bc70", "btcKey" : "03679c31e01c58ed42b91b4e6b055656f6a6c075ed2dfd2ddfea5f1100e3da6ba5"}
 ],
-"m":1
+"m":2
 }

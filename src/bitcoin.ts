@@ -223,6 +223,7 @@ export class bitcoinWatcher{
             utxos: utxosByAddress[address] || []
         }));
         this.utxos.map((address) => console.log(address.utxos))
+        emmiter.emit("newBtcBlock");
     }
 
     getAddress(index: number){

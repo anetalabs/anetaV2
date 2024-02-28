@@ -17,20 +17,25 @@ export class coordinator{
     }
 
     async getOpenRequests(){
+        console.log(this.cardanoWatcher  )
         let openRequests = await this.cardanoWatcher.getOpenRequests();
         return openRequests;
     }
 
     async onNewCardanoBlock(){
-        console.log("New Cardano Block event");
+      //  console.log("New Cardano Block event");
 
     
     }
 
     async onNewBtcBlock(){
-        let btcUtxos = await this.bitcoinWatcher.getUtxos();
-
-        console.log(btcUtxos);
+       // let btcUtxos = await this.bitcoinWatcher.getUtxos();
+        let openRequests = await this.cardanoWatcher.getOpenRequests();
+        openRequests.map((request) => {
+            console.log( this.cardanoWatcher.decodeDatum(request.datum));
+        })
+        
+        console.log( openRequests);
     }
 
     

@@ -5,6 +5,12 @@ import {cardanoConfig, topology, secretsConfig} from "./types.js"
 import {emmiter}  from "./coordinator.js";
  
 
+const MintRequesrSchema = Lucid.Data.Object({
+    amount: Lucid.Data.Integer(),
+    path: Lucid.Data.Integer(),
+  });
+  
+
 
 export class cardanoWatcher{
     private mongo: MongoClient;
@@ -16,6 +22,7 @@ export class cardanoWatcher{
 
     constructor(config: cardanoConfig, topology: topology, secrets: secretsConfig ){
         this.config = config;
+        this.topology = topology;
         let mongoClient = new MongoClient(config.mongo.connectionString);
          
         mongoClient.connect()
@@ -55,7 +62,6 @@ export class cardanoWatcher{
     }
     
     async startIndexer() {
-        // get the current tip from the database and start following the tip from there, if there is no tip in the database, start from the genesis block 
         let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
         console.log("tip" , tip);
         let tipPoint = undefined ;   
@@ -75,7 +81,7 @@ export class cardanoWatcher{
                     await this.handleNewBlock(block.block);
                     break;
                 case "undo":
-                    console.log(block.action, block.block);
+                    await this.handleUndoBlock(block.block); 
                     break;
                 case "reset":
                     console.log(block.action, block.point);
@@ -92,7 +98,11 @@ export class cardanoWatcher{
     }
     async handleUndoBlock(block: CardanoBlock){
      //   await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: block.header.hash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
-        console.log("Undo Block", block.header.hash);
+     //   console.log("Undo Block", block.header.hash);
+    }
+
+    decodeDatum(datum: string){
+        return Lucid.Data.from(datum, MintRequesrSchema);
     }
     
     async handleNewBlock(block: CardanoBlock){
@@ -108,7 +118,7 @@ export class cardanoWatcher{
         )})) ;
 
         await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
-        emmiter.emit("newCardanoBlock", blockHash, block.header.slot,  block.header.height)
-        console.log("New Cardano Block",blockHash, block.header.slot,  block.header.height);
+        emmiter.emit("newCardanoBlock")
+     //   console.log("New Cardano Block",blockHash, block.header.slot,  block.header.height);
     }
 }
