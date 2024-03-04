@@ -1,6 +1,7 @@
 import { emmiter } from './coordinator';
 import { topology, secretsConfig } from './types';
-import net from 'net';
+import { Server } from 'socket.io';
+import Client  from 'socket.io-client';
 import { Lucid } from 'lucid-cardano';
 import crypto from 'crypto';
 
@@ -9,7 +10,9 @@ enum NodeStatus {
     Follower = 'follower',
     Candidate = 'candidate',
     Monitor = 'monitor',
-    Leader = 'leader'
+    Leader = 'leader',
+    Unverified = 'unverified',
+    Disconnected = 'disconnected'
 }
 
 interface LogEntry {
@@ -21,18 +24,18 @@ interface angelPeer {
     id: string;
     currentTerm: number;
     votedFor: string | null;
-    log: LogEntry[];
-    commitIndex: number;
     lastApplied: number;
     ip: string;
     port: number;
     address: string;
-    connection: net.Socket;
+    outgoingConnection: any;
+    incomingConnection: any;
+    state: NodeStatus;
 }
 
 
 export class Communicator {
-    private nodes: angelPeer[];
+    private peers: angelPeer[];
     private lucid: Lucid;
     private address: string;
     private Iam: number;
@@ -45,7 +48,7 @@ export class Communicator {
                 this.lucid.selectWalletFromSeed(secrets.seed);
                 const pubKey =  this.lucid.utils.getAddressDetails(await this.lucid.wallet.address()).paymentCredential.hash;
                 //fing pubkey in topology or throw error
-                
+
                 const found = topology.topology.findIndex((node: { AdaPkHash: string }) => node.AdaPkHash === pubKey);
                 console.log('Pubkey:', pubKey, found);
                 if(found == -1){
@@ -53,7 +56,7 @@ export class Communicator {
                 }
                 this.Iam = found;
                 this.address = this.lucid.utils.credentialToAddress({type: "Key", hash: pubKey});
-                this.nodes = initializeNodes(topology);
+                this.peers = initializeNodes(topology, this.lucid);
                 this.start(port);
 
 
@@ -62,33 +65,53 @@ export class Communicator {
             }
         })();
 
-        setInterval(this.heartbeat, 1000);
+        setInterval(this.heartbeat, 5000);
         
 
-        function initializeNodes(topology: topology) {
+        function initializeNodes(topology: topology, lucid: Lucid) {
             return topology.topology.map((node) => {
                 return {
                     id: node.name,
                     currentTerm: 0,
                     votedFor: null,
                     log: [],
-                    commitIndex: 0,
                     lastApplied: 0,
                     port: node.port,
                     ip: node.ip,
-                    address: node.AdaPkHash,
-                    connection: null
+                    address: lucid.utils.credentialToAddress({type: "Key", hash: node.AdaPkHash}) ,
+                    outgoingConnection: null,
+                    incomingConnection: null,
+                    state: NodeStatus.Disconnected
                 };
             });
         }
     }
 
+    start(port: number) {
+        console.log("starting server")
+        // Create server
+        const io = new Server(port);
+        io.on('connection', (socket) => {
+            console.log('Client connected');
+            this.handShake(socket);
+        });
+
+        for (let i = 0; i < this.peers.length; i++) {
+            if(i !== this.Iam )   this.connect(i);
+        }
+    }
 
     heartbeat() {
         console.log('Sending heartbeat');
-        this.nodes.forEach(node => {
-            if (node.connection) {
-                node.connection.write(JSON.stringify({ heartbeat: true }));
+    
+        this.peers.forEach(node => {
+            console.log('Node:', node.id, node.incomingConnection ? true : false, node.outgoingConnection ? true : false)
+            if (node.incomingConnection) {
+                node.incomingConnection.write(JSON.stringify({ heartbeat: true }));
+            }
+            if (node.outgoingConnection) {
+                node.outgoingConnection.emit('heartbeat');
+                
             }
         })
     }
@@ -96,166 +119,123 @@ export class Communicator {
     private stringToHex(str: string) {
         return Buffer.from(str).toString('hex');
     }
+
+    private async handShake(socket: any) {
+         const challenge = "challenge" + crypto.randomBytes(32).toString('hex');
+         console.log("Starting handshake")
+         socket.emit('challenge', challenge);
+         socket.on('challengeResponse', async (response) => {
+            console.log("Challenge response received")
+            const verified = this.lucid.verifyMessage(response.address ,this.stringToHex(challenge), response);
+            if(verified){
+                const peerindex = this.peers.findIndex(peer => peer.address === response.address);
+                console.log(peerindex,response)
+                console.log(this.peers)
+              //  this.applyRuntimeListeners(socket);
+                this.peers[peerindex].incomingConnection = socket;
+            }else{
+                socket.disconnect();
+            }
+            }
+        );
+
+        
+        // socket.write(JSON.stringify({ "challenge": challenge }));
+        // socket.on('data',async (data) => {
+        //     const response = JSON.parse(data.toString());
+        //     if(response.challengeResponse){
+        //         const verified = this.lucid.verifyMessage(response.challengeResponse.address ,this.stringToHex(challenge), response.challengeResponse);
+        //         if(verified){
+        //             console.log(peerindex)
+               
+        //             this.applyRuntimeListeners(socket);
+
+        //             this.peers[peerindex].incomingConnection = socket;
+        //         }else{
+        //             socket.disconnect();
+        //     }}
+
+        //     if(response.challenge){
+        //         const message : Object= await this.lucid.wallet.signMessage(this.address, this.stringToHex(response.challenge));
+        //         console.log(message)
+        //         message["address"] = this.address;
+        //         socket.write(JSON.stringify({ challengeResponse: message }));
+        //     }
+        // });
+
+    }
   
-    private async handsakeListener(socket){
-        // Step 2: Listener sends challenge
-        const challenge = "challenge" + crypto.randomBytes(32).toString('hex');
-        console.log("Starting handshake")
-        socket.write(JSON.stringify({ "challengeStart": challenge }));
-
-        socket.on('data',async (data) => {
-            const response = JSON.parse(data.toString());
-
-            // Step 4: Listener verifies challenge, solves counterchallenge, and response with solution
-            if(response.challengeResponse){
-                const address = response.address;
-                console.log('Address:', address);
-                const verified = this.lucid.verifyMessage(response.address ,this.stringToHex(challenge), response.challengeResponse);
-                if(!verified){
-                    console.log('Rejected connection from', socket.remoteAddress, socket.remotePort);
-                    socket.end();
-                    return;
-                } else {
-                    const counterChallenge = response.counterChallenge;
-                    const message = await this.lucid.wallet.signMessage(this.address, this.stringToHex(counterChallenge));
-                    socket.write(JSON.stringify({ counterChallengeResponse: message, address: this.address }));
-
-                    // Step 6: Listener adds the socket into the corresponding peers list
-                    const peerindex = this.nodes.findIndex(node => this.lucid.utils.credentialToAddress({type: "Key", hash: node.address}) === response.address);
-                    console.log(peerindex)
-                    this.nodes[peerindex].connection = socket;
-            }
-            }
-
-            // Step 5: Initiator verifies counterChallenge, and sends acknowledgement
-            if(response.counterChallengeResponse){
-                const verified = this.lucid.verifyMessage(response.address ,this.stringToHex(challenge), response.counterChallengeResponse);
-                if(verified){
-                    socket.write(JSON.stringify({ acknowledgement: true }));
-                }
-            }
+    private  applyRuntimeListeners(socket: any) {
+        socket.removeAllListeners();
+        socket.on('data', (data) => {
+            console.log('Received data:', data.toString() , 'from', socket.remoteAddress, socket.remotePort);
         });
-
-    }
-
-    private async handshakeInitiator(socket){
-        const challenge = "challenge" + crypto.randomBytes(32).toString('hex');
-
-        socket.on('data',async (data) => {
-            const decodedData =  JSON.parse(data.toString());
-
-            // Step 3: Initiator signs challenge and replies with solution + counter
-            if (Object.keys(decodedData).includes('challengeStart')) {
-                const incomingChallenge =   decodedData["challengeStart"]
-
-                console.log('Received challenge:', incomingChallenge);
-                const challengeHex = this.stringToHex(incomingChallenge);
-                if(incomingChallenge.startsWith('challenge') === false){
-                    console.log('Rejected connection from', socket.remoteAddress, socket.remotePort);
-                    socket.end();
-                    return;
-                }
-                const message = await this.lucid.wallet.signMessage(this.address, challengeHex);
-                socket.write(JSON.stringify({ challengeResponse: message , address: this.address, counterChallenge: challenge}));
-            }
-
-            // Step 5: Initiator verifies counterChallenge, and sends acknowledgement
-            if (Object.keys(decodedData).includes('counterChallengeResponse')) {
-                const incomingCounterChallenge = decodedData["counterChallengeResponse"];
-                const verified = this.lucid.verifyMessage(decodedData.address, this.stringToHex(challenge), incomingCounterChallenge);
-                if(verified){
-                    socket.write(JSON.stringify({ acknowledgement: true }));
-
-                    // Step 6: Initiator adds the socket into the corresponding peers list
-                    const peerindex = this.nodes.findIndex(node => this.lucid.utils.credentialToAddress({type: "Key", hash: node.address}) === decodedData.address);
-                    console.log('Peer index:', peerindex);
-                    this.nodes[peerindex].connection = socket;
-                }
-            }
+        socket.on('close', () => {
+            console.log('Client disconnected');
+            this.peerDisconnected(socket);
         });
+        socket.on('error', (err) => {
+            console.error(`Socket error: ${err}`);
+            this.peerDisconnected(socket);
+        });
+        
     }
 
 
-    start(port: number) {
-        console.log("starting server")
-        // Create server
-        const server = net.createServer((socket) => {
-            // if (!this.peers.includes(socket.remotePort)) {
-            //     console.log('Rejected connection from', socket.remoteAddress, socket.remotePort);
-            //     socket.end();
-            //     return;
-            // }
 
-            this.handshakeInitiator(socket)
-            console.log('New client connected');
-            socket.on('data', (data) => {
-                console.log('Received data:', data.toString() , 'from', socket.remoteAddress, socket.remotePort);
-            });
-            socket.on('close', () => {
-                console.log('Client disconnected');
-                
-                this.peerDisconnected(socket);
-            });
-            socket.on('error', (err) => {
-                console.error(`Socket error: ${err}`);
-                this.peerDisconnected(socket);
-            });
-
-        });
-
-
-        server.listen(port, () => {
-            console.log(`Server listening on port ${port}`);
-        });
-
-        for (let i = 0; i < this.nodes.length; i++) {
-            
-            //connect if not me
-            if(i !== this.Iam)
-                this.connect(i);
-        }
-    }
-
-    peerDisconnected(socket: net.Socket) {
-        const index = this.nodes.findIndex(node => node.port === socket.remotePort);
-        if (index !== -1) {
-            console.log(`Peer ${this.nodes[index].id} disconnected`);
-            this.nodes[index].connection = null;
-        } else {
-            console.log(`Peer on port ${socket.remotePort} not found`);
-        }
+    peerDisconnected(id: number) {
+        // const index = this.nodes.findIndex(node => node.port === socket.remotePort);
+        // if (index !== -1) {
+        //     console.log(`Peer ${this.nodes[index].id} disconnected`);
+        //     this.nodes[index].connection = null;
+        // } else {
+        //     console.log(`Peer on port ${socket.remotePort} not found`);
+        // }
     }
 
 
     private async connect(i: number) {
-        const peerPort = this.nodes[i].port;
-        const socket = net.createConnection({ port: peerPort }, () => {
-            console.log(`Connected to peer on port ${peerPort}`);
-            this.nodes[i].connection = socket;
-        }).on('error', (err) => {
-            console.error(`Failed to connect to peer on port ${peerPort}:`, err);
+        const peerPort = this.peers[i].port;
+        const socket = Client(`http://localhost:${peerPort}`);
+        socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+            this.peers[i].outgoingConnection = null;
+
         });
 
-        this.handsakeListener(socket);
+        socket.on('connect_error', (error) => {
+            console.log('Connection Error');
+            socket.disconnect();
+            this.peers[i].outgoingConnection = null;
+
+        });
+        
+        socket.on('connect_timeout', () => {
+            console.log('Connection Timeout');
+            
+            socket.disconnect();
+            this.peers[i].outgoingConnection = null;
+
+        });
+
+
+        socket.on('challenge', async (challenge) => {
+            console.log("Challenge received")
+            const message : Object= await this.lucid.wallet.signMessage(this.address, this.stringToHex(challenge));
+            message["address"] = this.address;
+            socket.emit('challengeResponse', message);
+        });
+
+        this.peers[i].outgoingConnection = socket;
     }
 
     broadcast(message) {
-        for (let socket of this.nodes.map(peer => peer.connection)) {
-           if(socket)  socket.write(message);
-        }
+        // for (let socket of this.nodes.map(peer => peer.connection)) {
+        //    if(socket)  socket.write(message);
+        // }
     }
 
-    addNode(id: string, port: number) {
 
-     }
-
-     getStatus(){
-        return 
-     }
-
-    removeNode(id: string) {
-
-    }
 
 
 }
