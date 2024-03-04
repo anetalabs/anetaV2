@@ -11,7 +11,6 @@ enum NodeStatus {
     Candidate = 'candidate',
     Monitor = 'monitor',
     Leader = 'leader',
-    Unverified = 'unverified',
     Disconnected = 'disconnected'
 }
 
@@ -93,7 +92,13 @@ export class Communicator {
         const io = new Server(port);
         io.on('connection', (socket) => {
             console.log('Client connected');
+
+            
             this.handShake(socket);
+        });
+
+        io.on('disconnect', () => {
+            console.log('Client disconnected REEEEEE');
         });
 
         for (let i = 0; i < this.peers.length; i++) {
@@ -104,14 +109,20 @@ export class Communicator {
     heartbeat() {
         console.log('Sending heartbeat');
     
-        this.peers.forEach(node => {
-            console.log('Node:', node.id, node.incomingConnection ? true : false, node.outgoingConnection ? true : false)
+        this.peers.forEach((node, index) => {
+            console.log('Node:', node.id, 
+                                 node.incomingConnection ? true : false, 
+                                 node.outgoingConnection ? true : false,
+                                 node.state)
+
             if (node.incomingConnection) {
-                node.incomingConnection.write(JSON.stringify({ heartbeat: true }));
+                node.incomingConnection.emit('heartbeat');
             }
             if (node.outgoingConnection) {
                 node.outgoingConnection.emit('heartbeat');
                 
+            }else if(index !== this.Iam){
+                this.connect(index);
             }
         })
     }
@@ -129,56 +140,37 @@ export class Communicator {
             const verified = this.lucid.verifyMessage(response.address ,this.stringToHex(challenge), response);
             if(verified){
                 const peerindex = this.peers.findIndex(peer => peer.address === response.address);
-                console.log(peerindex,response)
-                console.log(this.peers)
-              //  this.applyRuntimeListeners(socket);
+
+                this.applyRuntimeListeners(socket,peerindex);
                 this.peers[peerindex].incomingConnection = socket;
             }else{
                 socket.disconnect();
             }
             }
         );
-
-        
-        // socket.write(JSON.stringify({ "challenge": challenge }));
-        // socket.on('data',async (data) => {
-        //     const response = JSON.parse(data.toString());
-        //     if(response.challengeResponse){
-        //         const verified = this.lucid.verifyMessage(response.challengeResponse.address ,this.stringToHex(challenge), response.challengeResponse);
-        //         if(verified){
-        //             console.log(peerindex)
-               
-        //             this.applyRuntimeListeners(socket);
-
-        //             this.peers[peerindex].incomingConnection = socket;
-        //         }else{
-        //             socket.disconnect();
-        //     }}
-
-        //     if(response.challenge){
-        //         const message : Object= await this.lucid.wallet.signMessage(this.address, this.stringToHex(response.challenge));
-        //         console.log(message)
-        //         message["address"] = this.address;
-        //         socket.write(JSON.stringify({ challengeResponse: message }));
-        //     }
-        // });
-
     }
-  
-    private  applyRuntimeListeners(socket: any) {
-        socket.removeAllListeners();
+
+
+    private getLeader() {
+        return this.peers.find(peer => peer.state === NodeStatus.Leader);
+    }
+
+    private  applyRuntimeListeners(socket: any, index: number) {
+        // socket.removeAllListeners();
+        socket.on('heartbeat', () => {  
+            console.log('Received incoming heartbeat from', this.peers[index].id);
+        });
+
         socket.on('data', (data) => {
             console.log('Received data:', data.toString() , 'from', socket.remoteAddress, socket.remotePort);
         });
-        socket.on('close', () => {
+ 
+        socket.on('disconnect', () => {
             console.log('Client disconnected');
-            this.peerDisconnected(socket);
+            
+            this.peers[index].incomingConnection = null;
+            socket.disconnect();
         });
-        socket.on('error', (err) => {
-            console.error(`Socket error: ${err}`);
-            this.peerDisconnected(socket);
-        });
-        
     }
 
 
@@ -197,10 +189,16 @@ export class Communicator {
     private async connect(i: number) {
         const peerPort = this.peers[i].port;
         const socket = Client(`http://localhost:${peerPort}`);
+        this.peers[i].outgoingConnection = socket;
+
         socket.on('disconnect', () => {
             console.log('Disconnected from server');
             this.peers[i].outgoingConnection = null;
 
+        });
+
+        socket.on('heartbeat', () => {  
+            console.log('Received outgoing heartbeat from', this.peers[i].id);
         });
 
         socket.on('connect_error', (error) => {
@@ -226,7 +224,6 @@ export class Communicator {
             socket.emit('challengeResponse', message);
         });
 
-        this.peers[i].outgoingConnection = socket;
     }
 
     broadcast(message) {
