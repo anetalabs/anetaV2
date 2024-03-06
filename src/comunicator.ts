@@ -181,7 +181,7 @@ export class Communicator {
                                  node.outgoingConnection ? true : false,
                                  node.state)
           
-             if(index !== this.Iam && node.outgoingConnection){
+             if(index !== this.Iam && !node.outgoingConnection){
                 this.connect(index);
             }
         })
