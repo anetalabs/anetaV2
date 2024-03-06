@@ -4,6 +4,10 @@ import { Server } from 'socket.io';
 import Client  from 'socket.io-client';
 import { Lucid } from 'lucid-cardano';
 import crypto from 'crypto';
+import { time } from 'console';
+
+const HEARTBEAT = 2000;
+const ELECTION_TIMEOUT = 2;
 
 enum NodeStatus {
     Learner = 'learner',
@@ -19,10 +23,11 @@ interface LogEntry {
     command: any;
 }
 
+
 interface angelPeer {
     id: string;
     currentTerm: number;
-    votedFor: string | null;
+    votedFor: number | null;
     lastApplied: number;
     ip: string;
     port: number;
@@ -37,10 +42,12 @@ export class Communicator {
     private peers: angelPeer[];
     private lucid: Lucid;
     private address: string;
+    private topology: topology;
+    private leaderTimeout: Date;
     private Iam: number;
     constructor(topology: topology, secrets: secretsConfig , port: number) {
         this.heartbeat = this.heartbeat.bind(this);
-
+        this.topology = topology;
         (async () => {
             try {
                 this.lucid = await Lucid.new();
@@ -55,7 +62,7 @@ export class Communicator {
                 }
                 this.Iam = found;
                 this.address = this.lucid.utils.credentialToAddress({type: "Key", hash: pubKey});
-                this.peers = initializeNodes(topology, this.lucid);
+                this.peers = initializeNodes(topology, this.lucid, this.Iam);
                 this.start(port);
 
 
@@ -64,11 +71,11 @@ export class Communicator {
             }
         })();
 
-        setInterval(this.heartbeat, 5000);
+        setInterval(this.heartbeat, HEARTBEAT);
         
-
-        function initializeNodes(topology: topology, lucid: Lucid) {
-            return topology.topology.map((node) => {
+        this.leaderTimeout = new Date();
+        function initializeNodes(topology: topology, lucid: Lucid, Iam: number ) {
+            return topology.topology.map((node, index) => {
                 return {
                     id: node.name,
                     currentTerm: 0,
@@ -80,7 +87,7 @@ export class Communicator {
                     address: lucid.utils.credentialToAddress({type: "Key", hash: node.AdaPkHash}) ,
                     outgoingConnection: null,
                     incomingConnection: null,
-                    state: NodeStatus.Disconnected
+                    state: index === Iam ? NodeStatus.Learner : NodeStatus.Disconnected
                 };
             });
         }
@@ -90,6 +97,7 @@ export class Communicator {
         console.log("starting server")
         // Create server
         const io = new Server(port);
+
         io.on('connection', (socket) => {
             console.log('Client connected');
 
@@ -98,7 +106,7 @@ export class Communicator {
         });
 
         io.on('disconnect', () => {
-            console.log('Client disconnected REEEEEE');
+            console.log('Client disconnected');
         });
 
         for (let i = 0; i < this.peers.length; i++) {
@@ -106,22 +114,74 @@ export class Communicator {
         }
     }
 
+    election() {
+        if(this.peers[this.Iam].state in [NodeStatus.Leader,NodeStatus.Candidate, NodeStatus.Monitor] ) return;
+
+        console.log('Leader timeout, starting election');
+        this.leaderTimeout = new Date();
+        let newLeader : number = -1;
+        //seet all nodes to monitor
+        this.peers.forEach((node, index) => {
+            if(index !== this.Iam){
+                node.state = NodeStatus.Monitor;
+                node.votedFor = null;
+            }
+        });
+        for (let i = 0; i < this.peers.length; i++) {
+            if (this.peers[i].incomingConnection || i === this.Iam) {
+                newLeader = i;
+                this.peers[i].state = NodeStatus.Candidate;
+                this.peers[this.Iam].votedFor = i;
+
+                break;
+            }
+        }
+
+        this.vote(newLeader);
+        setTimeout(() => {
+            const leader = this.getLeader();
+
+            if (leader !== null) {
+                console.log('Leader elected:', leader);
+                this.peers[leader].state = NodeStatus.Leader;
+                if(this.Iam !== leader) this.peers[this.Iam].state = NodeStatus.Follower;
+                this.leaderTimeout = new Date();
+            } else {
+                console.log('No leader elected', leader);
+            }
+        }, HEARTBEAT );
+    }
+
+    vote = function (candidate: number) {
+        console.log('Voting for:', candidate);
+        let vote = {
+            candidate: candidate,
+            time : new Date().getTime(),
+            voter: this.address
+        } 
+        this.peers.forEach(async (node : angelPeer) => {
+            if (node.outgoingConnection) {
+                node.outgoingConnection.emit('vote', {vote: JSON.stringify(vote), signature: await this.lucid.wallet.signMessage(this.peers[this.Iam].address, this.stringToHex(JSON.stringify(vote)))});
+            }
+        });
+    }
+
     heartbeat() {
+
+        if(this.peers[this.Iam].state === NodeStatus.Leader){
+            this.broadcast('heartbeat');
+        }else if( new Date().getTime() - new Date(this.leaderTimeout).getTime() > ELECTION_TIMEOUT * HEARTBEAT){
+            this.election();
+        }
         console.log('Sending heartbeat');
-    
+        console.log('leaderTimeout:', new Date(this.leaderTimeout).getTime() - new Date().getTime());
         this.peers.forEach((node, index) => {
             console.log('Node:', node.id, 
                                  node.incomingConnection ? true : false, 
                                  node.outgoingConnection ? true : false,
                                  node.state)
-
-            if (node.incomingConnection) {
-                node.incomingConnection.emit('heartbeat');
-            }
-            if (node.outgoingConnection) {
-                node.outgoingConnection.emit('heartbeat');
-                
-            }else if(index !== this.Iam){
+          
+             if(index !== this.Iam && node.outgoingConnection){
                 this.connect(index);
             }
         })
@@ -140,9 +200,10 @@ export class Communicator {
             const verified = this.lucid.verifyMessage(response.address ,this.stringToHex(challenge), response);
             if(verified){
                 const peerindex = this.peers.findIndex(peer => peer.address === response.address);
-
+                socket.emit('status', this.peers[this.Iam].state);
                 this.applyRuntimeListeners(socket,peerindex);
                 this.peers[peerindex].incomingConnection = socket;
+                
             }else{
                 socket.disconnect();
             }
@@ -151,15 +212,50 @@ export class Communicator {
     }
 
 
+
     private getLeader() {
-        return this.peers.find(peer => peer.state === NodeStatus.Leader);
+        // get the node with the most votes 
+        let leader = null;
+        for(let i = 0; i < this.peers.length; i++){
+          if( this.peers.filter((node) => node.votedFor === i).length >= this.topology.m){
+            leader = i;
+          }
+
+        }
+
+        // if the node has more than half of the votes return it
+        return leader;
     }
 
     private  applyRuntimeListeners(socket: any, index: number) {
         // socket.removeAllListeners();
         socket.on('heartbeat', () => {  
-            console.log('Received incoming heartbeat from', this.peers[index].id);
+         //   console.log('Received incoming heartbeat from', this.peers[index].id);
+            if(this.peers[index].state === NodeStatus.Leader){
+                this.leaderTimeout =  new Date();
+            }
         });
+
+
+
+        socket.on('vote', (vote) => {   
+            try{
+                const decodedVote = JSON.parse(vote.vote);
+                const verified = this.lucid.verifyMessage(decodedVote.voter ,this.stringToHex(vote.vote), vote.signature);
+                const addressIsPeer = (this.peers.findIndex(peer => peer.address === decodedVote.voter) !== -1);
+                if(verified && addressIsPeer && Math.abs(decodedVote.time - new Date().getTime() ) < HEARTBEAT){
+                    console.log('Valid vode from:', decodedVote.voter, 'for:', decodedVote.candidate);
+                    this.peers[index].votedFor = decodedVote.candidate;
+                }else{  
+                    console.log('Vote not verified');
+                }
+        
+            }catch(err){
+                console.log(err);
+            }
+        }
+        );
+
 
         socket.on('data', (data) => {
             console.log('Received data:', data.toString() , 'from', socket.remoteAddress, socket.remotePort);
@@ -169,22 +265,10 @@ export class Communicator {
             console.log('Client disconnected');
             
             this.peers[index].incomingConnection = null;
+            this.peers[index].state = NodeStatus.Disconnected;
             socket.disconnect();
         });
     }
-
-
-
-    peerDisconnected(id: number) {
-        // const index = this.nodes.findIndex(node => node.port === socket.remotePort);
-        // if (index !== -1) {
-        //     console.log(`Peer ${this.nodes[index].id} disconnected`);
-        //     this.nodes[index].connection = null;
-        // } else {
-        //     console.log(`Peer on port ${socket.remotePort} not found`);
-        // }
-    }
-
 
     private async connect(i: number) {
         const peerPort = this.peers[i].port;
@@ -198,7 +282,7 @@ export class Communicator {
         });
 
         socket.on('heartbeat', () => {  
-            console.log('Received outgoing heartbeat from', this.peers[i].id);
+           // console.log('Received outgoing heartbeat from', this.peers[i].id);
         });
 
         socket.on('connect_error', (error) => {
@@ -207,7 +291,7 @@ export class Communicator {
             this.peers[i].outgoingConnection = null;
 
         });
-        
+
         socket.on('connect_timeout', () => {
             console.log('Connection Timeout');
             
@@ -226,10 +310,12 @@ export class Communicator {
 
     }
 
-    broadcast(message) {
-        // for (let socket of this.nodes.map(peer => peer.connection)) {
-        //    if(socket)  socket.write(message);
-        // }
+    broadcast(method, params= undefined) {
+        this.peers.forEach((node, index) => {
+            if (node.outgoingConnection) {
+                node.outgoingConnection.emit(method, params);
+            }
+        });
     }
 
 
