@@ -4,10 +4,9 @@ import { Server } from 'socket.io';
 import Client  from 'socket.io-client';
 import { Lucid } from 'lucid-cardano';
 import crypto from 'crypto';
-import { time } from 'console';
 
 const HEARTBEAT = 2000;
-const ELECTION_TIMEOUT = 2;
+const ELECTION_TIMEOUT = 5;
 
 enum NodeStatus {
     Learner = 'learner',
@@ -122,7 +121,7 @@ export class Communicator {
         let newLeader : number = -1;
         //seet all nodes to monitor
         this.peers.forEach((node, index) => {
-            if(index !== this.Iam){
+            if(index !== this.Iam && node.state !== NodeStatus.Disconnected){
                 node.state = NodeStatus.Monitor;
                 node.votedFor = null;
             }
@@ -144,7 +143,10 @@ export class Communicator {
             if (leader !== null) {
                 console.log('Leader elected:', leader);
                 this.peers[leader].state = NodeStatus.Leader;
-                if(this.Iam !== leader) this.peers[this.Iam].state = NodeStatus.Follower;
+                if(this.Iam !== leader) {
+                    this.peers[this.Iam].state = NodeStatus.Follower;
+                    this.broadcast('statusUpdate', NodeStatus.Follower);
+                }
                 this.leaderTimeout = new Date();
             } else {
                 console.log('No leader elected', leader);
@@ -152,38 +154,60 @@ export class Communicator {
         }, HEARTBEAT );
     }
 
-    vote = function (candidate: number) {
+    vote = async function (candidate: number, peer : angelPeer = null) {
         console.log('Voting for:', candidate);
         let vote = {
             candidate: candidate,
             time : new Date().getTime(),
             voter: this.address
         } 
-        this.peers.forEach(async (node : angelPeer) => {
-            if (node.outgoingConnection) {
-                node.outgoingConnection.emit('vote', {vote: JSON.stringify(vote), signature: await this.lucid.wallet.signMessage(this.peers[this.Iam].address, this.stringToHex(JSON.stringify(vote)))});
-            }
-        });
+    
+        if(peer && peer.outgoingConnection ){
+            peer.outgoingConnection.emit('vote', {vote: JSON.stringify(vote), signature: await this.lucid.wallet.signMessage(this.peers[this.Iam].address, this.stringToHex(JSON.stringify(vote)))});
+        }else {
+            this.peers.forEach(async (node : angelPeer) => {
+                if (node.outgoingConnection) {
+                    node.outgoingConnection.emit('vote', {vote: JSON.stringify(vote), signature: await this.lucid.wallet.signMessage(this.peers[this.Iam].address, this.stringToHex(JSON.stringify(vote)))});
+                }
+            
+            });
+        }
     }
 
     heartbeat() {
-
+        
         if(this.peers[this.Iam].state === NodeStatus.Leader){
             this.broadcast('heartbeat');
-        }else if( new Date().getTime() - new Date(this.leaderTimeout).getTime() > ELECTION_TIMEOUT * HEARTBEAT){
-            this.election();
+        }else{ 
+            if( new Date().getTime() - new Date(this.leaderTimeout).getTime() > ELECTION_TIMEOUT * HEARTBEAT){
+                this.election();
+            }
         }
-        console.log('Sending heartbeat');
+        if(  [NodeStatus.Learner, NodeStatus.Monitor, NodeStatus.Candidate].includes(this.peers[this.Iam].state)  && this.getLeader() !== null){
+            if(this.getLeader() === this.Iam){
+                 this.peers[this.Iam].state = NodeStatus.Leader;
+            }else{
+                 this.peers[this.Iam].state = NodeStatus.Follower;
+                 this.broadcast('statusUpdate', NodeStatus.Follower);
+            }
+        }
+        
         console.log('leaderTimeout:', new Date(this.leaderTimeout).getTime() - new Date().getTime());
         this.peers.forEach((node, index) => {
             console.log('Node:', node.id, 
-                                 node.incomingConnection ? true : false, 
-                                 node.outgoingConnection ? true : false,
-                                 node.state)
-          
-             if(index !== this.Iam && !node.outgoingConnection){
+            node.incomingConnection ? true : false, 
+            node.outgoingConnection ? true : false,
+            node.state)
+            
+            if(node.outgoingConnection === null ){
                 this.connect(index);
             }
+            if ([NodeStatus.Monitor, NodeStatus.Learner, NodeStatus.Candidate].includes(node.state)) { 
+                let leader = this.getLeader();
+                if (leader !== null) this.vote(this.getLeader(), node);
+            }
+            
+
         })
     }
 
@@ -200,9 +224,9 @@ export class Communicator {
             const verified = this.lucid.verifyMessage(response.address ,this.stringToHex(challenge), response);
             if(verified){
                 const peerindex = this.peers.findIndex(peer => peer.address === response.address);
-                socket.emit('status', this.peers[this.Iam].state);
                 this.applyRuntimeListeners(socket,peerindex);
                 this.peers[peerindex].incomingConnection = socket;
+                socket.emit('authenticationAccepted');
                 
             }else{
                 socket.disconnect();
@@ -237,6 +261,14 @@ export class Communicator {
         });
 
 
+        socket.on('statusUpdate', (status) => {
+            console.log('Status update:', status);
+            if(status === NodeStatus.Leader){
+                console.log('illigal status update from:', this.peers[index].id, 'to leader, ignoring...');
+                this.applyPunitveMeasures(socket);
+            }
+            this.peers[index].state = status;
+        });
 
         socket.on('vote', (vote) => {   
             try{
@@ -270,6 +302,12 @@ export class Communicator {
         });
     }
 
+    private applyPunitveMeasures(peer: angelPeer) {
+        console.log('Applying punitive measures');
+        if (peer.incomingConnection) peer.incomingConnection.disconnect();
+        if (peer.outgoingConnection) peer.outgoingConnection.disconnect();
+    }
+
     private async connect(i: number) {
         const peerPort = this.peers[i].port;
         const socket = Client(`http://localhost:${peerPort}`);
@@ -278,6 +316,8 @@ export class Communicator {
         socket.on('disconnect', () => {
             console.log('Disconnected from server');
             this.peers[i].outgoingConnection = null;
+            this.peers[i].state = NodeStatus.Disconnected;
+
 
         });
 
@@ -306,6 +346,12 @@ export class Communicator {
             const message : Object= await this.lucid.wallet.signMessage(this.address, this.stringToHex(challenge));
             message["address"] = this.address;
             socket.emit('challengeResponse', message);
+        });
+
+        socket.on('authenticationAccepted', () => {
+
+            console.log('Authentication accepted');
+            this.peers[i].outgoingConnection.emit("statusUpdate", this.peers[this.Iam].state);
         });
 
     }
