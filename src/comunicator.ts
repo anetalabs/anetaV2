@@ -1,7 +1,8 @@
 import { emmiter } from './coordinator';
 import { topology, secretsConfig } from './types';
-import { Server } from 'socket.io';
-import Client  from 'socket.io-client';
+import { Server, Socket as ServerSocket } from 'socket.io';
+import { Socket as ClientSocket } from 'socket.io-client';
+import  Client  from 'socket.io-client';
 import { Lucid } from 'lucid-cardano';
 import crypto from 'crypto';
 
@@ -17,11 +18,11 @@ enum NodeStatus {
     Disconnected = 'disconnected'
 }
 
-interface LogEntry {
-    term: number;
-    command: any;
+interface vote {
+    candidate: number;
+    time: number;
+    voter: string;
 }
-
 
 interface angelPeer {
     id: string;
@@ -31,8 +32,8 @@ interface angelPeer {
     ip: string;
     port: number;
     address: string;
-    outgoingConnection: any;
-    incomingConnection: any;
+    outgoingConnection: ClientSocket | null;
+    incomingConnection: ServerSocket | null;
     state: NodeStatus;
 }
 
@@ -215,7 +216,7 @@ export class Communicator {
         return Buffer.from(str).toString('hex');
     }
 
-    private async handShake(socket: any) {
+    private async handShake(socket: ServerSocket) {
          const challenge = "challenge" + crypto.randomBytes(32).toString('hex');
          console.log("Starting handshake")
          socket.emit('challenge', challenge);
@@ -251,7 +252,8 @@ export class Communicator {
         return leader;
     }
 
-    private  applyRuntimeListeners(socket: any, index: number) {
+    private  applyRuntimeListeners(socket: ServerSocket, index: number) {
+        
         // socket.removeAllListeners();
         socket.on('heartbeat', () => {  
          //   console.log('Received incoming heartbeat from', this.peers[index].id);
@@ -265,14 +267,14 @@ export class Communicator {
             console.log('Status update:', status);
             if(status === NodeStatus.Leader){
                 console.log('illigal status update from:', this.peers[index].id, 'to leader, ignoring...');
-                this.applyPunitveMeasures(socket);
+               // this.applyPunitveMeasures(socket);
             }
             this.peers[index].state = status;
         });
 
-        socket.on('vote', (vote) => {   
+        socket.on('vote', (vote ) => {   
             try{
-                const decodedVote = JSON.parse(vote.vote);
+                const decodedVote : vote= JSON.parse(vote.vote);
                 const verified = this.lucid.verifyMessage(decodedVote.voter ,this.stringToHex(vote.vote), vote.signature);
                 const addressIsPeer = (this.peers.findIndex(peer => peer.address === decodedVote.voter) !== -1);
                 if(verified && addressIsPeer && Math.abs(decodedVote.time - new Date().getTime() ) < HEARTBEAT){
@@ -290,7 +292,7 @@ export class Communicator {
 
 
         socket.on('data', (data) => {
-            console.log('Received data:', data.toString() , 'from', socket.remoteAddress, socket.remotePort);
+            console.log('Received data:', data.toString() , 'from', socket.handshake.address);
         });
  
         socket.on('disconnect', () => {
@@ -319,10 +321,6 @@ export class Communicator {
             this.peers[i].state = NodeStatus.Disconnected;
 
 
-        });
-
-        socket.on('heartbeat', () => {  
-           // console.log('Received outgoing heartbeat from', this.peers[i].id);
         });
 
         socket.on('connect_error', (error) => {
