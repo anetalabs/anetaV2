@@ -26,9 +26,12 @@ export class cardanoWatcher{
         let mongoClient = new MongoClient(config.mongo.connectionString);
          
         mongoClient.connect()
-            .then((client) => {
+            .then(async (client) => {
                 this.mongo = client;
                 console.log("Connected to MongoDB");
+                console.time("dumpHistory");
+                await this.dumpHistory();
+                console.timeEnd("dumpHistory");
                 this.startIndexer();
             })
             .catch((error) => {
@@ -60,6 +63,37 @@ export class cardanoWatcher{
         let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
         return tip;
     }
+
+    async dumpHistory(){
+        let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
+        console.log("tip" , tip);
+        let tipPoint = undefined ;   
+        if(tip){
+            tipPoint = {index: tip.slot, hash: tip.hash};
+        }
+
+
+        console.log("Starting from tip", tipPoint);
+        const rcpClient = new CardanoSyncClient({ uri : "https://preview.utxorpc-v0.demeter.run",  headers: {"dmtr-api-key": "dmtr_utxorpc1rutw90zm5ucx4lg9tj56nymnq5j98zlf"}} );
+        let chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: 1000});
+        console.log("Stream", chunk);  
+        while(chunk.block.length > 0){
+            await Promise.all( chunk.block.map( (block) => {
+                //console.log("Block:",  block);
+                this.registerNewBlock(block.chain.value as CardanoBlock);
+            }));
+            //set tip to the last block
+            console.log("Chunk", chunk.nextToken, chunk.block.length)
+            const lastBlock = chunk.block[chunk.block.length - 1].chain.value as CardanoBlock;
+            await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: Buffer.from(lastBlock.header.hash).toString('hex') , slot: lastBlock.header.slot, height: lastBlock.header.height}}, {upsert: true});
+            chunk = await rcpClient.inner.dumpHistory( {startToken: chunk.nextToken, maxItems: 1000});
+        }
+       
+        //sleep 15 seconds then exit
+        await new Promise((resolve) => setTimeout(resolve, 15000));
+        process.exit(0);
+    }
+
     
     async startIndexer() {
         let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
@@ -72,12 +106,15 @@ export class cardanoWatcher{
 
         console.log("Starting from tip", tipPoint);
         const rcpClient = new CardanoSyncClient({ uri : "https://preview.utxorpc-v0.demeter.run",  headers: {"dmtr-api-key": "dmtr_utxorpc1rutw90zm5ucx4lg9tj56nymnq5j98zlf"}} );
-        const stream = rcpClient.followTip(tipPoint);
+        console.log(rcpClient.inner.dumpHistory)
+        const stream =  rcpClient.followTip( tipPoint);
+        console.log("Stream", stream);  
         try {
         console.log("Starting Indexer");
-        for await (const block of stream) {
+        for await (const block of stream ) {
             switch (block.action) { 
                 case "apply":
+                  
                     await this.handleNewBlock(block.block);
                     break;
                 case "undo":
@@ -106,7 +143,25 @@ export class cardanoWatcher{
     }
     
     async handleNewBlock(block: CardanoBlock){
+        let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
+
+        if(tip && tip.height >= block.header.height){
+            console.log("Already Processed Block", block.header.hash);
+            return;
+        }
+
         let blockHash = Buffer.from(block.header.hash).toString('hex');
+ 
+        this.registerNewBlock(block);
+        await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
+        emmiter.emit("newCardanoBlock")
+    }
+
+    async registerNewBlock(block: CardanoBlock){
+        let blockHash = Buffer.from(block.header.hash).toString('hex');
+
+        console.log("New Cardano Block",blockHash, block.header.slot,  block.header.height);
+
 
         await Promise.all(block.body.tx.map(async (tx) => {
             block.body.tx.map((tx) => {
@@ -116,9 +171,5 @@ export class cardanoWatcher{
         }
     
         )})) ;
-
-        await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
-        emmiter.emit("newCardanoBlock")
-     //   console.log("New Cardano Block",blockHash, block.header.slot,  block.header.height);
     }
 }
