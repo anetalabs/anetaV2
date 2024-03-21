@@ -43,6 +43,7 @@ export class cardanoWatcher{
            console.log(this.lucid.utils.getAddressDetails( await this.lucid.wallet.address()));
            this.mintingScript = this.lucid.utils.nativeScriptFromJson(config.mintingScript as Lucid.NativeScript);
            console.log("Minting Script Address:", this.mintingScript);
+           emmiter.emit("notification", "Cardano Watcher Ready");
            console.log("Minting PolicyId:", this.lucid.utils.mintingPolicyToId(this.mintingScript));
            this.cBTCPolicy = this.lucid.utils.mintingPolicyToId(this.mintingScript);
         })();
@@ -59,6 +60,7 @@ export class cardanoWatcher{
     async mint(){
 
     }
+
     async getTip(){
         let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
         return tip;
@@ -164,16 +166,15 @@ export class cardanoWatcher{
         await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
         emmiter.emit("newCardanoBlock")
         console.log("New Cardano Block",blockHash, block.header.slot,  block.header.height);
-
+        emmiter.emit("notification", "New Cardano Block");
     }
 
     async registerNewBlock(block: CardanoBlock){
         await Promise.all(block.body.tx.map(async (tx) => {
-            
+            // find all mints of cBTC
            if(Object.keys(tx.mint).includes(this.cBTCPolicy)){
                console.log("Minting Transaction", tx);
            }
-    
     })) ;
     }
 }

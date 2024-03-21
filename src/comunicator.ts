@@ -74,6 +74,7 @@ export class Communicator {
         setInterval(this.heartbeat, HEARTBEAT);
         
         this.leaderTimeout = new Date();
+        
         function initializeNodes(topology: topology, lucid: Lucid, Iam: number ) {
             return topology.topology.map((node, index) => {
                 return {

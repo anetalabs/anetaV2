@@ -14,6 +14,7 @@ export class coordinator{
 
         emmiter.on("newCardanoBlock", this.onNewCardanoBlock);
         emmiter.on("newBtcBlock", this.onNewBtcBlock.bind(this));
+
     }
 
     async getOpenRequests(){
@@ -37,8 +38,4 @@ export class coordinator{
         
         console.log( openRequests);
     }
-
-    
-
-
 }
