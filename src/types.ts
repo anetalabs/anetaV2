@@ -55,6 +55,10 @@ export type cardanoConfig = {
     }
   }
 
+export type notificationConfig = {
+    directory: string 
+}
+
 
 export type secretsConfig ={
     "seed" : string

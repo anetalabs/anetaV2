@@ -43,6 +43,7 @@ export class cardanoWatcher{
            console.log(this.lucid.utils.getAddressDetails( await this.lucid.wallet.address()));
            this.mintingScript = this.lucid.utils.nativeScriptFromJson(config.mintingScript as Lucid.NativeScript);
            console.log("Minting Script Address:", this.mintingScript);
+           emitter.emit("notification", "Cardano Watcher Ready");
            console.log("Minting PolicyId:", this.lucid.utils.mintingPolicyToId(this.mintingScript));
            this.cBTCPolicy = this.lucid.utils.mintingPolicyToId(this.mintingScript);
         })();
