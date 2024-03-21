@@ -2,7 +2,7 @@ import { MongoClient } from "mongodb";
 import * as Lucid  from 'lucid-cardano'
 import { CardanoSyncClient , CardanoBlock } from "@utxorpc/sdk";
 import {cardanoConfig, topology, secretsConfig} from "./types.js"
-import {emmiter}  from "./coordinator.js";
+import {emitter}  from "./coordinator.js";
  
 
 const MintRequesrSchema = Lucid.Data.Object({
@@ -43,7 +43,7 @@ export class cardanoWatcher{
            console.log(this.lucid.utils.getAddressDetails( await this.lucid.wallet.address()));
            this.mintingScript = this.lucid.utils.nativeScriptFromJson(config.mintingScript as Lucid.NativeScript);
            console.log("Minting Script Address:", this.mintingScript);
-           emmiter.emit("notification", "Cardano Watcher Ready");
+           emitter.emit("notification", "Cardano Watcher Ready");
            console.log("Minting PolicyId:", this.lucid.utils.mintingPolicyToId(this.mintingScript));
            this.cBTCPolicy = this.lucid.utils.mintingPolicyToId(this.mintingScript);
         })();
@@ -164,9 +164,9 @@ export class cardanoWatcher{
  
         this.registerNewBlock(block);
         await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
-        emmiter.emit("newCardanoBlock")
+        emitter.emit("newCardanoBlock")
         console.log("New Cardano Block",blockHash, block.header.slot,  block.header.height);
-        emmiter.emit("notification", "New Cardano Block");
+        emitter.emit("notification", "New Cardano Block");
     }
 
     async registerNewBlock(block: CardanoBlock){

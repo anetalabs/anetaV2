@@ -2,7 +2,7 @@ import { cardanoWatcher } from "./cardano.js"
 import { bitcoinWatcher } from "./bitcoin.js";
 import EventEmitter from "events";
 
-export const emmiter = new EventEmitter();
+export const emitter = new EventEmitter();
 
 export class coordinator{
     cardanoWatcher: cardanoWatcher
@@ -12,8 +12,8 @@ export class coordinator{
         this.cardanoWatcher = cardanoWatcher;
         this.bitcoinWatcher = bitcoinWatcher;
 
-        emmiter.on("newCardanoBlock", this.onNewCardanoBlock);
-        emmiter.on("newBtcBlock", this.onNewBtcBlock.bind(this));
+        emitter.on("newCardanoBlock", this.onNewCardanoBlock);
+        emitter.on("newBtcBlock", this.onNewBtcBlock.bind(this));
 
     }
 
