@@ -7,8 +7,9 @@ import { dirname } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const dir = './dist/notificationScripts'; // replace with your relative directory
+const dir = './dist/notificationScripts';
 export class notificationManager {
+
     constructor() {
         emitter.on("notification", (notification) => {
             fs.readdir(dir, (err, files) => {
@@ -18,16 +19,13 @@ export class notificationManager {
                 }
             
                 files.forEach(file => {
-                    if (path.extname(file) === '.sh') {
+                    if (['.sh','.js','.bat'].includes(path.extname(file))){
                         console.log(`Executing ${dir} ${file}`);
-                        exec(`"${path.join(__dirname,dir, file)}"`, (err, stdout, stderr) => {
+                        exec(`"${path.join(__dirname , ".." ,dir, file)}" "${notification}"`, (err, stdout, stderr) => {
                             if (err) {
                                 console.error(`Error executing ${file}: ${err}`);
                                 return;
                             }
-            
-                            console.log(`Output of ${file}: ${stdout}`);
-                            console.error(`Errors of ${file}: ${stderr}`);
                         });
                     }
                 });

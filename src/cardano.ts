@@ -43,7 +43,6 @@ export class cardanoWatcher{
            console.log(this.lucid.utils.getAddressDetails( await this.lucid.wallet.address()));
            this.mintingScript = this.lucid.utils.nativeScriptFromJson(config.mintingScript as Lucid.NativeScript);
            console.log("Minting Script Address:", this.mintingScript);
-           emitter.emit("notification", "Cardano Watcher Ready");
            console.log("Minting PolicyId:", this.lucid.utils.mintingPolicyToId(this.mintingScript));
            this.cBTCPolicy = this.lucid.utils.mintingPolicyToId(this.mintingScript);
         })();
@@ -125,7 +124,10 @@ export class cardanoWatcher{
             switch (block.action) { 
                 case "apply":
                   
-                    await this.handleNewBlock(block.block);
+                    const result = await this.handleNewBlock(block.block);
+                    if(!result){
+                        throw new Error("Block Already Processed");
+                    }
                     break;
                 case "undo":
                     await this.handleUndoBlock(block.block); 
@@ -152,12 +154,12 @@ export class cardanoWatcher{
         return Lucid.Data.from(datum, MintRequesrSchema);
     }
     
-    async handleNewBlock(block: CardanoBlock){
+    async handleNewBlock(block: CardanoBlock) : Promise<Boolean>{
         let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
 
         if(tip && tip.height >= block.header.height){
             console.log("Already Processed Block", block.header.hash);
-            return;
+            return false;
         }
 
         let blockHash = Buffer.from(block.header.hash).toString('hex');
@@ -166,7 +168,7 @@ export class cardanoWatcher{
         await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
         emitter.emit("newCardanoBlock")
         console.log("New Cardano Block",blockHash, block.header.slot,  block.header.height);
-        emitter.emit("notification", "New Cardano Block");
+        return true;
     }
 
     async registerNewBlock(block: CardanoBlock){
