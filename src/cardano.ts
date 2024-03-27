@@ -19,12 +19,14 @@ export class cardanoWatcher{
     private topology: topology;
     private config: cardanoConfig;
     private cBTCPolicy: Lucid.PolicyId;
-
+    private address: string;
     constructor(config: cardanoConfig, topology: topology, secrets: secretsConfig ){
         this.config = config;
         this.topology = topology;
         let mongoClient = new MongoClient(config.mongo.connectionString);
-         
+
+        this.mintingScript = {type: "PlutusV2" , script: config.contract};
+
         mongoClient.connect()
             .then(async (client) => {
                 this.mongo = client;
@@ -41,11 +43,13 @@ export class cardanoWatcher{
            this.lucid = await Lucid.Lucid.new(new Lucid.Blockfrost(config.lucid.provider.host), (config.network.charAt(0).toUpperCase() + config.network.slice(1)) as Lucid.Network);
            this.lucid.selectWalletFromSeed(secrets.seed);
            console.log(this.lucid.utils.getAddressDetails( await this.lucid.wallet.address()));
-           this.mintingScript = this.lucid.utils.nativeScriptFromJson(config.mintingScript as Lucid.NativeScript);
            console.log("Minting Script Address:", this.mintingScript);
            emitter.emit("notification", "Cardano Watcher Ready");
-           console.log("Minting PolicyId:", this.lucid.utils.mintingPolicyToId(this.mintingScript));
            this.cBTCPolicy = this.lucid.utils.mintingPolicyToId(this.mintingScript);
+           console.log("Minting PolicyId:", this.cBTCPolicy);
+           
+           this.address =  this.lucid.utils.credentialToAddress({type: "Script", hash: this.cBTCPolicy});
+           console.log("Address", this.address);
         })();
         
 
@@ -127,11 +131,12 @@ export class cardanoWatcher{
                   
                     const result = await this.handleNewBlock(block.block);
                     if(!result){
-                        throw new Error("Block Already Processed");
+                      //  throw new Error("Block Already Processed");
                     }
                     break;
                 case "undo":
                     await this.handleUndoBlock(block.block); 
+                    this.loop();
                     break;
                 case "reset":
                     console.log(block.action, block.point);
@@ -146,6 +151,11 @@ export class cardanoWatcher{
             this.startIndexer();    
         }
     }
+
+    async loop(){
+        console.log("Looping");
+    }
+
     async handleUndoBlock(block: CardanoBlock){
      //   await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: block.header.hash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
      //   console.log("Undo Block", block.header.hash);
@@ -177,7 +187,18 @@ export class cardanoWatcher{
             // find all mints of cBTC
            if(Object.keys(tx.mint).includes(this.cBTCPolicy)){
                console.log("Minting Transaction", tx);
+               this.mongo.db("cNeta").collection("mint").insertOne({tx: tx, block: block.header.hash, height: block.header.height});
            }
+          
     })) ;
+    }
+
+    getAddress(tx){
+        console.log(tx.inputs);
+        let address = tx.inputs.map( (input) => { return input.address});
+        address = address.concat(tx.outputs.map( (output) => { return output.address}));
+        return address;
+
+
     }
 }

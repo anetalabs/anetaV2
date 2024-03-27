@@ -35,10 +35,6 @@ export type topology = {
 
 export type cardanoConfig = {
     network: string
-    mintingScript: {
-      keyHash: string
-      type: string
-    }
     paymentAddress: string
     mongo: {
       connectionString: string
@@ -53,6 +49,7 @@ export type cardanoConfig = {
       host: string
       key: string
     }
+    contract: string
   }
 
 export type notificationConfig = {
