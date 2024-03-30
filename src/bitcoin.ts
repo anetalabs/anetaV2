@@ -6,7 +6,7 @@ import { EventEmitter } from 'events';
 import {bitcoinConfig, topology, secretsConfig} from "./types.js"
 import * as bip39 from 'bip39';
 import {BIP32Factory} from 'bip32';
-import { emmiter } from "./coordinator.js";
+import { emitter } from "./coordinator.js";
 
 const ECPair =  ECPairFactory(ecc);
 export const utxoEventEmitter = new EventEmitter();
@@ -66,7 +66,7 @@ export class bitcoinWatcher{
                 console.log("new BTC block: ",currentHeight);
                 lastHeight = currentHeight;
                 await this.getUtxos()
-                emmiter.emit("newBtcBlock");
+                emitter.emit("newBtcBlock");
                 
             }
         }, 5000); // Check every 5 seconds
@@ -201,6 +201,7 @@ export class bitcoinWatcher{
     }
 
     getUtxos = async () => {
+        try{
         const descriptors = this.address.map(address => ({ 'desc': `addr(${address})`, 'range': 1000 }));
         const height = await this.getHeight()
         await this.client.command('scantxoutset', 'abort', descriptors)
@@ -223,7 +224,10 @@ export class bitcoinWatcher{
             utxos: utxosByAddress[address] || []
         }));
         this.utxos.map((address) => console.log(address.utxos))
-        emmiter.emit("newBtcBlock");
+        emitter.emit("newBtcBlock");
+    } catch (e) {
+        console.log(e)
+    }
     }
 
     getAddress(index: number){

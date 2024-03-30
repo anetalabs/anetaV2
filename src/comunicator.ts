@@ -1,4 +1,4 @@
-import { emmiter } from './coordinator';
+import { emitter } from './coordinator';
 import { topology, secretsConfig } from './types';
 import { Server, Socket as ServerSocket } from 'socket.io';
 import { Socket as ClientSocket } from 'socket.io-client';

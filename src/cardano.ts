@@ -3,12 +3,14 @@ import * as Lucid  from 'lucid-cardano'
 import { CardanoSyncClient , CardanoBlock } from "@utxorpc/sdk";
 import {cardanoConfig, topology, secretsConfig} from "./types.js"
 import {emitter}  from "./coordinator.js";
- 
+import axios from "axios";
 
 const MintRequesrSchema = Lucid.Data.Object({
     amount: Lucid.Data.Integer(),
     path: Lucid.Data.Integer(),
   });
+
+
   
 
 
@@ -16,13 +18,13 @@ export class cardanoWatcher{
     private mongo: MongoClient;
     private lucid: Lucid.Lucid;
     private mintingScript: Lucid.Script;
-    private topology: topology;
-    private config: cardanoConfig;
+    private syncing: boolean = true;
     private cBTCPolicy: Lucid.PolicyId;
     private address: string;
+    private mintRequests: any[] = [];
+    private configUtxo : Lucid.UTxO;
+
     constructor(config: cardanoConfig, topology: topology, secrets: secretsConfig ){
-        this.config = config;
-        this.topology = topology;
         let mongoClient = new MongoClient(config.mongo.connectionString);
 
         this.mintingScript = {type: "PlutusV2" , script: config.contract};
@@ -47,9 +49,10 @@ export class cardanoWatcher{
            emitter.emit("notification", "Cardano Watcher Ready");
            this.cBTCPolicy = this.lucid.utils.mintingPolicyToId(this.mintingScript);
            console.log("Minting PolicyId:", this.cBTCPolicy);
-           
+           this.configUtxo =await this.lucid.provider.getUtxoByUnit("a653490ca18233f06e7f69f4048f31ade4e3885750beae0170d7c8ae634e65746142726964676541646d696e");
            this.address =  this.lucid.utils.credentialToAddress({type: "Script", hash: this.cBTCPolicy});
            console.log("Address", this.address);
+           console.log("Local Address", await this.lucid.wallet.address());
         })();
         
 
@@ -57,8 +60,62 @@ export class cardanoWatcher{
     }
 
     async getOpenRequests(){
-        let openRequests = this.lucid.provider.getUtxos(this.config.paymentAddress);
-        return openRequests;
+    
+        return [];
+    }
+
+    async rejectRequest(txHash: string, index: number){
+        try{
+
+        const MultisigDescriptorSchema = Lucid.Data.Object({ 
+            list: Lucid.Data.Array(Lucid.Data.Bytes()),
+            m: Lucid.Data.Integer(),
+            });
+            
+            
+        type MultisigDescriptor = Lucid.Data.Static<typeof MultisigDescriptorSchema>;
+        const MultisigDescriptor = MultisigDescriptorSchema as unknown as MultisigDescriptor; 
+        console.log("Config UTxO",this.configUtxo)
+        const multisig = Lucid.Data.from(this.configUtxo.datum, MultisigDescriptor);
+        console.log(multisig);
+        const openRequests =await this.lucid.provider.getUtxos(this.address);
+        const request = openRequests.find( (request) => request.txHash === txHash && request.outputIndex === index);
+        console.log(request)
+        
+        const spendingTx =  this.lucid.newTx().attachSpendingValidator(this.mintingScript).collectFrom([request], Lucid.Data.void()).readFrom([this.configUtxo])
+
+        
+        const signersTx = this.lucid.newTx().addSigner(await this.lucid.wallet.address())
+        const referenceInput = this.lucid.newTx().readFrom([this.configUtxo]);
+        
+        const outputTx = this.lucid.newTx().payToAddress(await this.getUtxoSender(txHash, index), { "lovelace": 1000000n});
+        const finalTx = this.lucid.newTx()
+                                  .compose(signersTx)
+                                  .compose(spendingTx)
+                               //   .compose(outputTx)
+
+                                  .compose(referenceInput);
+
+
+        const completedTx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false});
+        const signatures = await  completedTx.partialSign();
+        const signedTx = await completedTx.assemble([signatures]).complete();
+        console.log("signature", signatures);
+        console.log("completedTx", signedTx.toString());
+//        this.lucid.provider.submitTx(signedTx.toString());
+        await axios.post(
+            "https://cardano-preview.blockfrost.io/api/v0/tx/submit", 
+            signedTx.toString(), 
+            {
+                headers: {
+                    "Content-Type": "application/cbor",
+                    "Accept": "application/cbor"
+                }
+            }
+        );        }catch(e){
+            console.log(e);
+        }
+
     }
      
     async mint(){
@@ -66,8 +123,11 @@ export class cardanoWatcher{
     }
 
     async getTip(){
-        let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
         return tip;
+    }
+
+    inSync(){
+        return !this.syncing;
     }
 
     async dumpHistory(){
@@ -108,14 +168,26 @@ export class cardanoWatcher{
 
     }
 
+    async queryValidRequests(){
+        const openRequests = await this.lucid.provider.getUtxos(this.address);
+        console.log("Open Requests", openRequests);
+        const validRequests = openRequests.filter( (request) => {
+           return request.datum 
+        });
+        return validRequests;
+    }
     
     async startIndexer() {
         let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
+        let liveTip = await this.getTip();  
+        console.log(liveTip.data)
+
         console.log("tip" , tip);
         let tipPoint = undefined ;   
         if(tip){
             tipPoint = [{slot: tip.slot, hash: tip.hash}];
         }
+
 
 
         console.log("Starting from tip", tipPoint);
@@ -126,9 +198,18 @@ export class cardanoWatcher{
         try {
         console.log("Starting Indexer");
         for await (const block of stream ) {
+            
             switch (block.action) { 
                 case "apply":
+                    if(block.block.header.height >= liveTip.data.height){
+                        this.syncing = false;
+                    }
                   
+
+                    ///////////////
+                    const utxo = await this.queryValidRequests();
+                    if( utxo.length > 0) this.rejectRequest(utxo[0].txHash, utxo[0].outputIndex)
+                    ///////////////
                     const result = await this.handleNewBlock(block.block);
                     if(!result){
                       //  throw new Error("Block Already Processed");
@@ -156,6 +237,8 @@ export class cardanoWatcher{
         console.log("Looping");
     }
 
+
+    
     async handleUndoBlock(block: CardanoBlock){
      //   await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: block.header.hash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
      //   console.log("Undo Block", block.header.hash);
@@ -169,17 +252,22 @@ export class cardanoWatcher{
         let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
 
         if(tip && tip.height >= block.header.height){
-            console.log("Already Processed Block", block.header.hash);
+           // console.log("Already Processed Block", block.header.hash);
             return false;
         }
 
         let blockHash = Buffer.from(block.header.hash).toString('hex');
- 
         this.registerNewBlock(block);
         await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
         emitter.emit("newCardanoBlock")
         console.log("New Cardano Block",blockHash, block.header.slot,  block.header.height);
         return true;
+    }
+
+ 
+
+    async getUtxoSender(hash : string, index: number){
+        return  data.data.inputs[index].address;
     }
 
     async registerNewBlock(block: CardanoBlock){
@@ -189,16 +277,7 @@ export class cardanoWatcher{
                console.log("Minting Transaction", tx);
                this.mongo.db("cNeta").collection("mint").insertOne({tx: tx, block: block.header.hash, height: block.header.height});
            }
-          
-    })) ;
+        })) ;
     }
 
-    getAddress(tx){
-        console.log(tx.inputs);
-        let address = tx.inputs.map( (input) => { return input.address});
-        address = address.concat(tx.outputs.map( (output) => { return output.address}));
-        return address;
-
-
-    }
 }

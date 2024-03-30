@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@utxorpc/sdk": "^0.1.0",
+    "axios": "^1.6.8",
     "bip32": "^4.0.0",
     "bip39": "^3.1.0",
     "bitcoin-core": "^4.1.0",

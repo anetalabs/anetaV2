@@ -12,7 +12,7 @@ type MultisigDescriptor {
 
 validator( ){
  
-  fn multisig( _ , ctx: ScriptContext) {
+  fn multisig( _ , __, ctx: ScriptContext) {
     let adminTokenPolicy : PolicyId  = #"a653490ca18233f06e7f69f4048f31ade4e3885750beae0170d7c8ae"
     let adminTokenName : AssetName  =  #"634e65746142726964676541646d696e"
 
