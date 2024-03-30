@@ -22,6 +22,7 @@ export class cardanoWatcher{
     private cBTCPolicy: Lucid.PolicyId;
     private address: string;
     private mintRequests: any[] = [];
+
     private configUtxo : Lucid.UTxO;
 
     constructor(config: cardanoConfig, topology: topology, secrets: secretsConfig ){
@@ -31,6 +32,7 @@ export class cardanoWatcher{
 
         mongoClient.connect()
             .then(async (client) => {
+
                 this.mongo = client;
                 console.log("Connected to MongoDB");
                 console.time("dumpHistory");
@@ -42,7 +44,6 @@ export class cardanoWatcher{
                 console.error("Failed to connect to MongoDB:", error);
             });
         (async () => {
-           this.lucid = await Lucid.Lucid.new(new Lucid.Blockfrost(config.lucid.provider.host), (config.network.charAt(0).toUpperCase() + config.network.slice(1)) as Lucid.Network);
            this.lucid.selectWalletFromSeed(secrets.seed);
            console.log(this.lucid.utils.getAddressDetails( await this.lucid.wallet.address()));
            console.log("Minting Script Address:", this.mintingScript);
@@ -59,9 +60,60 @@ export class cardanoWatcher{
         console.log("cardano watcher")
     }
 
+
     async getOpenRequests(){
     
         return [];
+    }
+
+    async fulfillRequest(txHash: string, index: number){
+        try{
+            const MultisigDescriptorSchema = Lucid.Data.Object({ 
+                list: Lucid.Data.Array(Lucid.Data.Bytes()),
+                m: Lucid.Data.Integer(),
+                });
+                
+                
+            type MultisigDescriptor = Lucid.Data.Static<typeof MultisigDescriptorSchema>;
+            const MultisigDescriptor = MultisigDescriptorSchema as unknown as MultisigDescriptor; 
+            
+            console.log("Config UTxO",this.configUtxo)
+            const multisig = Lucid.Data.from(this.configUtxo.datum, MultisigDescriptor);
+            console.log(multisig);
+            const openRequests =await this.lucid.provider.getUtxos(this.address);
+            const request = openRequests.find( (request) => request.txHash === txHash && request.outputIndex === index);
+            console.log(request)
+            
+            const datum = this.decodeDatum(request.datum);
+            const spendingTx =  this.lucid.newTx().attachSpendingValidator(this.mintingScript).collectFrom([request], Lucid.Data.void()).readFrom([this.configUtxo])
+    
+            
+            const signersTx = this.lucid.newTx().addSigner(await this.lucid.wallet.address())
+            const referenceInput = this.lucid.newTx().readFrom([this.configUtxo]);
+            const assets = {} 
+            assets[this.cBTCPolicy + "63425443"] = datum.amount;
+            const mintTx = this.lucid.newTx().attachMintingPolicy(this.mintingScript).mintAssets(assets, Lucid.Data.void());
+
+          
+            const finalTx = this.lucid.newTx()
+                                      .compose(signersTx)
+                                      .compose(spendingTx)
+                                      .compose(mintTx)
+                                      .compose(referenceInput);
+    
+    
+            const completedTx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false});
+            const signatures = await  completedTx.partialSign();
+            const signedTx = await completedTx.assemble([signatures]).complete();
+            console.log("signature", signatures);
+            console.log("completedTx", signedTx.toString());
+            await signedTx.submit();    
+        }catch(e){
+                console.log(e);
+            }
+    
+    
+    
     }
 
     async rejectRequest(txHash: string, index: number){
@@ -102,17 +154,8 @@ export class cardanoWatcher{
         const signedTx = await completedTx.assemble([signatures]).complete();
         console.log("signature", signatures);
         console.log("completedTx", signedTx.toString());
-//        this.lucid.provider.submitTx(signedTx.toString());
-        await axios.post(
-            "https://cardano-preview.blockfrost.io/api/v0/tx/submit", 
-            signedTx.toString(), 
-            {
-                headers: {
-                    "Content-Type": "application/cbor",
-                    "Accept": "application/cbor"
-                }
-            }
-        );        }catch(e){
+        signedTx.submit();    
+    }catch(e){
             console.log(e);
         }
 
@@ -208,7 +251,7 @@ export class cardanoWatcher{
 
                     ///////////////
                     const utxo = await this.queryValidRequests();
-                    if( utxo.length > 0) this.rejectRequest(utxo[0].txHash, utxo[0].outputIndex)
+                    if( utxo.length > 0) this.fulfillRequest(utxo[0].txHash, utxo[0].outputIndex)
                     ///////////////
                     const result = await this.handleNewBlock(block.block);
                     if(!result){
