@@ -7,7 +7,7 @@
         "lucid":{
             "provider": {
                 "type": "blockfrost",
-                "host": "https://blockfrost-preview-api-mwallet-e048ec.us1.demeter.run"
+                "host": "https://cardano-preview.blockfrost.io/api/v0"
             }
         },
         "utxoRpc": {
