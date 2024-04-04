@@ -256,6 +256,10 @@ export class bitcoinWatcher{
         return p2shAddress.redeem.output.toString('hex');
     }
 
+    getPaymentPaths(){
+        return this.config.paymentPaths;
+    }
+
 
 
     fillerKey(index: number){

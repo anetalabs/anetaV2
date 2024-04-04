@@ -10,7 +10,9 @@ const MintRequesrSchema = Lucid.Data.Object({
     path: Lucid.Data.Integer(),
   });
 
-
+interface decodedRequest extends Lucid.UTxO{ 
+    decodedDatum: typeof MintRequesrSchema
+}
   
 
 
@@ -22,14 +24,13 @@ export class cardanoWatcher{
     private cBTCPolicy: Lucid.PolicyId;
     private address: string;
     private mintRequests: any[] = [];
-
+    private requestsFulfilled: string[] = [];
     private configUtxo : Lucid.UTxO;
 
     constructor(config: cardanoConfig, topology: topology, secrets: secretsConfig ){
         let mongoClient = new MongoClient(config.mongo.connectionString);
-
         this.mintingScript = {type: "PlutusV2" , script: config.contract};
-
+        this.queryValidRequests = this.queryValidRequests.bind(this);
         mongoClient.connect()
             .then(async (client) => {
 
@@ -43,9 +44,9 @@ export class cardanoWatcher{
             .catch((error) => {
                 console.error("Failed to connect to MongoDB:", error);
             });
+
         (async () => {
            this.lucid.selectWalletFromSeed(secrets.seed);
-           console.log(this.lucid.utils.getAddressDetails( await this.lucid.wallet.address()));
            console.log("Minting Script Address:", this.mintingScript);
            emitter.emit("notification", "Cardano Watcher Ready");
            this.cBTCPolicy = this.lucid.utils.mintingPolicyToId(this.mintingScript);
@@ -60,11 +61,6 @@ export class cardanoWatcher{
         console.log("cardano watcher")
     }
 
-
-    async getOpenRequests(){
-    
-        return [];
-    }
 
     async fulfillRequest(txHash: string, index: number){
         try{
@@ -108,12 +104,14 @@ export class cardanoWatcher{
             console.log("signature", signatures);
             console.log("completedTx", signedTx.toString());
             await signedTx.submit();    
+            this.requestsFulfilled.push(this.requestId(request));
         }catch(e){
                 console.log(e);
             }
-    
-    
-    
+    }
+
+    requestId(request: Lucid.UTxO){
+        return request.txHash + request.outputIndex.toString();
     }
 
     async rejectRequest(txHash: string, index: number){
@@ -154,7 +152,8 @@ export class cardanoWatcher{
         const signedTx = await completedTx.assemble([signatures]).complete();
         console.log("signature", signatures);
         console.log("completedTx", signedTx.toString());
-        signedTx.submit();    
+        await signedTx.submit();    
+        this.requestsFulfilled.push(this.requestId(request));
     }catch(e){
             console.log(e);
         }
@@ -211,13 +210,29 @@ export class cardanoWatcher{
 
     }
 
-    async queryValidRequests(){
-        const openRequests = await this.lucid.provider.getUtxos(this.address);
-        console.log("Open Requests", openRequests);
-        const validRequests = openRequests.filter( (request) => {
-           return request.datum 
-        });
-        return validRequests;
+    async queryValidRequests(): Promise<decodedRequest[]> {
+        function requestIsProcessed(request: Lucid.UTxO){
+            return false
+        }
+        try{
+            const openRequests = await this.lucid.provider.getUtxos(this.address);
+
+
+            const validRequests = openRequests.filter((request) => {
+                return request.datum && requestIsProcessed(request) === false;
+            });
+
+
+            const decodedRequests = validRequests.map((request) => {
+                const decodedRequest = request as decodedRequest; // Cast decodedRequest to the correct type
+                decodedRequest["decodedDatum"] =  this.decodeDatum(request.datum);
+                return decodedRequest;
+            });
+            return decodedRequests;
+        }catch(e){
+            console.log(e);
+            return [];
+        }
     }
     
     async startIndexer() {
@@ -247,20 +262,11 @@ export class cardanoWatcher{
                     if(block.block.header.height >= liveTip.data.height){
                         this.syncing = false;
                     }
-                  
-
-                    ///////////////
-                    const utxo = await this.queryValidRequests();
-                    if( utxo.length > 0) this.fulfillRequest(utxo[0].txHash, utxo[0].outputIndex)
-                    ///////////////
-                    const result = await this.handleNewBlock(block.block);
-                    if(!result){
-                      //  throw new Error("Block Already Processed");
-                    }
+    
+                    await this.handleNewBlock(block.block);
                     break;
                 case "undo":
                     await this.handleUndoBlock(block.block); 
-                    this.loop();
                     break;
                 case "reset":
                     console.log(block.action, block.point);
@@ -272,19 +278,18 @@ export class cardanoWatcher{
         }
         } catch (e) {
             console.log(e);
-            this.startIndexer();    
+            //sleep for 5 seconds and restart the indexer
+            setTimeout(() => {
+                this.startIndexer();
+            }, 5000);
         }
     }
 
-    async loop(){
-        console.log("Looping");
-    }
-
-
     
     async handleUndoBlock(block: CardanoBlock){
-     //   await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: block.header.hash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
-     //   console.log("Undo Block", block.header.hash);
+        await this.mongo.db("cNeta").collection("mint").deleteMany({block: block.header.hash});
+        let blockHash = Buffer.from(block.header.hash).toString('hex');
+        await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
     }
 
     decodeDatum(datum: string){
@@ -294,20 +299,27 @@ export class cardanoWatcher{
     async handleNewBlock(block: CardanoBlock) : Promise<Boolean>{
         let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
 
-        if(tip && tip.height >= block.header.height){
-           // console.log("Already Processed Block", block.header.hash);
+        if(tip && tip.height == block.header.height){
+            console.log("Block replaying tip", block.header.hash);
+            return false;
+
+        }else if(tip && tip.height >= block.header.height){
+            throw new Error(`Block already processed ${block.header.height}, registered tip: ${tip.height}`); 
+            console.log("Already Processed Block", block.header.hash);
             return false;
         }
 
         let blockHash = Buffer.from(block.header.hash).toString('hex');
         this.registerNewBlock(block);
         await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
-        emitter.emit("newCardanoBlock")
+        if(!this.syncing )
+            emitter.emit("newCardanoBlock")
+        
         console.log("New Cardano Block",blockHash, block.header.slot,  block.header.height);
         return true;
     }
 
- 
+
 
     async getUtxoSender(hash : string, index: number){
         return  data.data.inputs[index].address;
