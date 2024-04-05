@@ -1,20 +1,12 @@
 import { MongoClient } from "mongodb";
+import { toHexString, txId } from "./helpers.js";
 import * as Lucid  from 'lucid-cardano'
 import { CardanoSyncClient , CardanoBlock } from "@utxorpc/sdk";
-import {cardanoConfig, topology, secretsConfig} from "./types.js"
+import {cardanoConfig, topology, secretsConfig, decodedRequest, MintRequesrSchema, utxo} from "./types.js"
 import {emitter}  from "./coordinator.js";
 import axios from "axios";
 
-const MintRequesrSchema = Lucid.Data.Object({
-    amount: Lucid.Data.Integer(),
-    path: Lucid.Data.Integer(),
-  });
-
-interface decodedRequest extends Lucid.UTxO{ 
-    decodedDatum: typeof MintRequesrSchema
-}
-  
-
+const METADATA_TAG = 85471236584;
 
 export class cardanoWatcher{
     private mongo: MongoClient;
@@ -62,7 +54,7 @@ export class cardanoWatcher{
     }
 
 
-    async fulfillRequest(txHash: string, index: number){
+    async fulfillRequest(txHash: string, index: number, payments: utxo[]){
         try{
             const MultisigDescriptorSchema = Lucid.Data.Object({ 
                 list: Lucid.Data.Array(Lucid.Data.Bytes()),
@@ -70,6 +62,9 @@ export class cardanoWatcher{
                 });
                 
                 
+            const metadata = payments.map((payment) => {
+                return [ payment.txid , payment.vout];
+             });
             type MultisigDescriptor = Lucid.Data.Static<typeof MultisigDescriptorSchema>;
             const MultisigDescriptor = MultisigDescriptorSchema as unknown as MultisigDescriptor; 
             
@@ -88,8 +83,8 @@ export class cardanoWatcher{
             const referenceInput = this.lucid.newTx().readFrom([this.configUtxo]);
             const assets = {} 
             assets[this.cBTCPolicy + "63425443"] = datum.amount;
-            const mintTx = this.lucid.newTx().attachMintingPolicy(this.mintingScript).mintAssets(assets, Lucid.Data.void());
-
+            const mintTx = this.lucid.newTx().attachMintingPolicy(this.mintingScript).mintAssets(assets, Lucid.Data.void()).attachMetadata(METADATA_TAG, metadata);
+            
           
             const finalTx = this.lucid.newTx()
                                       .compose(signersTx)
@@ -328,10 +323,18 @@ export class cardanoWatcher{
     async registerNewBlock(block: CardanoBlock){
         await Promise.all(block.body.tx.map(async (tx) => {
             // find all mints of cBTC
-           if(Object.keys(tx.mint).includes(this.cBTCPolicy)){
-               console.log("Minting Transaction", tx);
-               this.mongo.db("cNeta").collection("mint").insertOne({tx: tx, block: block.header.hash, height: block.header.height});
-           }
+
+            if(tx.mint.some((multiasset) => toHexString(multiasset.policyId) === this.cBTCPolicy)){
+                console.log("Minting Transaction", tx);
+                const payments = tx.auxiliary.metadata[0]?.value.metadatum.case === "array" ? tx.auxiliary.metadata[0].value.metadatum.value.items.map((item) => 
+                      item.metadatum.case === "array" ? txId(item.metadatum.value.items[0].metadatum.value as string, Number(item.metadatum.value.items[1].metadatum.value))   : undefined   
+                      )
+                    : [];
+
+                
+                console.log("Payments", tx.auxiliary, payments);
+                this.mongo.db("cNeta").collection("mint").insertOne({tx: tx, block: block.header.hash, height: block.header.height,payments });
+            }
         })) ;
     }
 

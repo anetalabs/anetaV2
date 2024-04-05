@@ -1,3 +1,5 @@
+import * as Lucid  from 'lucid-cardano'
+
 export type nodeStatus = {  
     "status" : "leader" | "follower" | "candidate" | "monitor" | "learner"
 } 
@@ -61,3 +63,20 @@ export type secretsConfig ={
     "seed" : string
 }
 
+export const MintRequesrSchema = Lucid.Data.Object({
+  amount: Lucid.Data.Integer(),
+  path: Lucid.Data.Integer(),
+});
+
+export interface decodedRequest extends Lucid.UTxO{ 
+  decodedDatum: typeof MintRequesrSchema
+}
+
+
+export type utxo = {
+  txid: string,
+  vout: number,
+  scriptPubKey: string,
+  amount: number,
+  height: number
+}

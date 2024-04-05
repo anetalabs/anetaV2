@@ -7,6 +7,7 @@ import {bitcoinConfig, topology, secretsConfig} from "./types.js"
 import * as bip39 from 'bip39';
 import {BIP32Factory} from 'bip32';
 import { emitter } from "./coordinator.js";
+import { utxo } from "./types.js";
 
 const ECPair =  ECPairFactory(ecc);
 export const utxoEventEmitter = new EventEmitter();
@@ -18,13 +19,7 @@ type addressUtxos = {
 }
 
 
-type utxo = {
-    txid: string,
-    vout: number,
-    scriptPubKey: string,
-    amount: number,
-    height: number
-}
+
 
 
 export class bitcoinWatcher{
@@ -77,6 +72,14 @@ export class bitcoinWatcher{
         return height
     }
 
+    satToBtc = (sat: number) => {
+        return sat / 100_000_000;
+    }
+
+    btcToSat = (btc: number) => {
+        return btc * 100_000_000;
+    }
+
     watcherSync = async () => {
         const isSynced = await this.isNodeSynced();
         while (!isSynced) {
@@ -84,12 +87,19 @@ export class bitcoinWatcher{
             await new Promise((resolve) => setTimeout(resolve, 5000));
         }
         await this.getUtxos();
+        //////////////////////////
+        emitter.emit("newBtcBlock");
+        //////////////////////////
         this.startListener()
         this.isSynced = true;
     };
 
     getUtxosByIndex = (index: number) => {
-        return this.utxos[index].utxos;
+        try{
+            return this.utxos[index].utxos;
+        } catch (e) {   
+            return [];
+        }
     }
 
     inSycn =  () => {
