@@ -14,6 +14,7 @@ export  type bitcoinConfig =
         "host": string,
         "timeout": number
     },
+    "falbackFeeRate" : number,
     "BTCadminAddress": string,
     "BTCPrivKey": string,
     "Finality" : number,

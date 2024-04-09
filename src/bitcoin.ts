@@ -198,7 +198,10 @@ export class bitcoinWatcher{
         console.log({address: this.getVaultAddress(), value: amount });
         txb.addOutput({address: this.getVaultAddress(), value: amount });
 
-        //txb.signAllInputs(this.watcherKey);
+        txb.signAllInputs(this.watcherKey);
+        // for(let i = 0; i < txb.inputCount; i++){
+        //     txb.signInput(i, this.watcherKey);
+        // }
         txb.finalizeAllInputs();
         const tx = txb.extractTransaction();
 
@@ -217,7 +220,7 @@ export class bitcoinWatcher{
     
     getFee = async () => {  
         const fee = await this.client.estimateSmartFee(100)
-        return fee.feerate;
+        return fee.feerate ? fee.feerate : this.config.falbackFeeRate;
     }
 
     getUtxos = async () => {
@@ -286,7 +289,7 @@ export class bitcoinWatcher{
     getRedeemScript(index: number){
 
         const HexKeys =  this.topology.topology.map((guardian) => guardian.btcKey);
-        if (index !== 0) HexKeys.push(this.fillerKey(index));
+        HexKeys.push(this.fillerKey(index+1));
         const pubkeys = HexKeys.map(key => Buffer.from(key, 'hex'));
         const p2shAddress = bitcoin.payments.p2wsh({
             redeem: bitcoin.payments.p2ms({ m: this.topology.m , pubkeys ,

@@ -145,7 +145,7 @@ export class coordinator{
 
         if(threholdFilled || timeToConsolidate){
             console.log("Consolidating payments");
-            await this.bitcoinWatcher.consolidatePayments([completed[1], completed[2]]);
+            await this.bitcoinWatcher.consolidatePayments(completed);
             completed.forEach((index) => {
                 this.paymentPaths[index].state = state.finished;
             });
