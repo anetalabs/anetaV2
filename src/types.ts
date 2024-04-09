@@ -25,7 +25,8 @@ export type topology = {
 
     
         "topology" : [
-            {"name": string ,
+            {
+              "name": string ,
               "ip": string,
               "port": number,
               "AdaPkHash": string,
@@ -33,6 +34,15 @@ export type topology = {
               },
         ],    
         "m": number
+}
+
+export type protocolConfig = {
+
+    fixedFee: number,
+    margin: number,
+    utxoCharge: number
+    maxConsolidationTime: number
+    consolidationThreshold : number
 }
 
 export type cardanoConfig = {

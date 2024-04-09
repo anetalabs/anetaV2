@@ -56,6 +56,12 @@ export class cardanoWatcher{
 
     async fulfillRequest(txHash: string, index: number, payments: utxo[]){
         try{
+            for(let payment of payments){
+                if(await this.paymentProcessed(payment)){
+                    throw new Error("Payment already processed");
+                }
+            }
+            // check that we are synced with the tip
             const MultisigDescriptorSchema = Lucid.Data.Object({ 
                 list: Lucid.Data.Array(Lucid.Data.Bytes()),
                 m: Lucid.Data.Integer(),
@@ -278,6 +284,13 @@ export class cardanoWatcher{
                 this.startIndexer();
             }, 5000);
         }
+    }
+
+    async paymentProcessed(payment: utxo): Promise<Boolean>{
+        //find the payment in the list of mints in MongoDB, payments is a array of txId , check if the payment is in the list
+       const match = await this.mongo.db("cNeta").collection("mint").find({payments:  { $in : [txId(payment.txid, payment.vout)]}}).toArray();
+
+       return match.length > 0;
     }
 
     

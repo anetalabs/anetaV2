@@ -18,11 +18,13 @@ async function main() {
     const notificationConfig = JSON.parse((await readFile(args.notificationConfig || './notificationConfig.example.json')).toString());
     const topology =  JSON.parse((await readFile(args.topology || './topology.example.json')).toString());
     const secrets = JSON.parse((await  readFile(args.secrets || './secrets.example.json')).toString() );
+    const protocolConfig = JSON.parse((await readFile(args.protocolConfig || './protocolConfig.example.json')).toString());
     //const communicator = new Communicator(topology, secrets, args.port || 3000)
     const notification = new notificationManager(notificationConfig)
     const watcher = new bitcoinWatcher(bitcoinConfig, topology, secrets)
     const ADAWatcher = new cardanoWatcher(cardanoConfig, topology, secrets)
-    const coord = new coordinator(ADAWatcher, watcher)
+    const coord = new coordinator(ADAWatcher, watcher, protocolConfig)
+    
 
        // while(!watcher.inSycn()){
        //     await new Promise((resolve) => setTimeout(resolve, LOOP_INTERVAL));

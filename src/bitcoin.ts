@@ -8,6 +8,7 @@ import * as bip39 from 'bip39';
 import {BIP32Factory} from 'bip32';
 import { emitter } from "./coordinator.js";
 import { utxo } from "./types.js";
+import { checkPrimeSync } from "crypto";
 
 const ECPair =  ECPairFactory(ecc);
 export const utxoEventEmitter = new EventEmitter();
@@ -153,24 +154,27 @@ export class bitcoinWatcher{
 
     }
 
-    reddemIndex = async (indexs: number[]) => {
-
+    consolidatePayments = async (indexs: number[]) => {
+        try{
         const txb = new bitcoin.Psbt({network : bitcoin.networks[this.config.network] });
         let total = 0;
         let txSize = 10 + 35;
         const nonWitnessData = 41;
         const witnessData = this.topology.m * 73 + this.topology.topology.length * 34 + 3 + this.topology.m + this.topology.topology.length * 34 + 1;
         const inputSize = nonWitnessData + Math.ceil(witnessData / 4);   
+        console.log("consolidating payments", indexs);
 
 
         indexs.map((index) => {
-            if (index >= this.utxos.length || index <= 0) throw new Error('Index out of range');
+            if (index >= this.utxos.length - 1 ) throw new Error('Index out of range');
 
             const addressUtxos = this.utxos[index].utxos;
+            console.log("addressUtxos",indexs , addressUtxos)
             const redeemScript = Buffer.from(this.getRedeemScript(index), 'hex');
 
         for (let i = 0; i < addressUtxos.length; i++) {
-            total += Math.round(addressUtxos[i].amount * 100000000) ;
+            console.log("amount", addressUtxos[i].amount)
+            total += Math.round(this.btcToSat(addressUtxos[i].amount)) ;
             txb.addInput({
                 hash: addressUtxos[i].txid,
                 index: addressUtxos[i].vout,
@@ -181,24 +185,30 @@ export class bitcoinWatcher{
                 witnessScript: redeemScript,
             });
         }
+
         txSize += addressUtxos.length * inputSize;
         });
 
         if (total === 0) throw new Error('No UTXOs to redeem');
-        const feerate = await this.getFee() ;
+        const feerate =   await this.getFee() ;
     
         const fee = Math.round( 100_000 * feerate  * txSize) ; //round to 8 decimal places 
         const amount = total - fee;
-        
-        txb.addOutput({address: this.address[0], value: amount });
+        console.log("total", total, "fee", fee, "amount", amount, "txSize", txSize, "feerate", feerate);  
+        console.log({address: this.getVaultAddress(), value: amount });
+        txb.addOutput({address: this.getVaultAddress(), value: amount });
 
-        txb.signAllInputs(this.watcherKey);
+        //txb.signAllInputs(this.watcherKey);
         txb.finalizeAllInputs();
         const tx = txb.extractTransaction();
 
         const txHex = tx.toHex();
         const resault = await this.client.sendRawTransaction(txHex);
-        
+        console.log("consolidation completed", resault);
+    } catch (e) {   
+        console.log(e)
+        throw e;
+    }
     }
 
     refundIndex = (index: number) => {
@@ -213,6 +223,7 @@ export class bitcoinWatcher{
     getUtxos = async () => {
         try{
         const descriptors = this.address.map(address => ({ 'desc': `addr(${address})`, 'range': 1000 }));
+        descriptors.push({ 'desc': `addr(${this.getVaultAddress()})`, 'range': 1000 });
         const height = await this.getHeight()
         await this.client.command('scantxoutset', 'abort', descriptors)
         const resault =  await this.client.command('scantxoutset', 'start', descriptors)
@@ -233,16 +244,35 @@ export class bitcoinWatcher{
             address,
             utxos: utxosByAddress[address] || []
         }));
+        this.utxos.push({
+            index: this.address.length,
+            address: this.getVaultAddress(),
+            utxos: utxosByAddress[this.getVaultAddress()] || []
+        });
+
         this.utxos.map((address) => console.log(address.utxos))
+        console.log("Vault", this.utxos[this.address.length])
         emitter.emit("newBtcBlock");
     } catch (e) {
         console.log(e)
     }
     }
 
+    getVaultAddress(){
+        const HexKeys =  this.topology.topology.map((guardian) => guardian.btcKey);
+        const pubkeys = HexKeys.map(key => Buffer.from(key, 'hex'));
+        const p2shAddress = bitcoin.payments.p2wsh({
+            redeem: bitcoin.payments.p2ms({ m: this.topology.m , pubkeys ,
+            network: bitcoin.networks[this.config.network], }),
+            network: bitcoin.networks[this.config.network],
+        });
+    
+        return p2shAddress.address; 
+    }
+
     getAddress(index: number){
         const HexKeys =  this.topology.topology.map((guardian) => guardian.btcKey);
-        if (index !== 0) HexKeys.push(this.fillerKey(index));
+        HexKeys.push(this.fillerKey(index +1));
         const pubkeys = HexKeys.map(key => Buffer.from(key, 'hex'));
         const p2shAddress = bitcoin.payments.p2wsh({
             redeem: bitcoin.payments.p2ms({ m: this.topology.m , pubkeys ,
