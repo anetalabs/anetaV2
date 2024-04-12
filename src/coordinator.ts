@@ -6,6 +6,7 @@ export const emitter = new EventEmitter();
 import { decodedRequest, utxo , protocolConfig, MintRequesrSchema} from "./types.js";
 import { getDb } from "./db.js";
 import { Collection } from "mongodb";
+
 enum state {
     open,
     commited,
@@ -14,12 +15,20 @@ enum state {
     finished
 }
 
-interface redemptionsStack{
-    requests: decodedRequest[],
-    currentTransaction: string,
+enum redemptionState{
+    open,
+    forged,
+    burned,
+    submitted,
     
 }
 
+interface redemptionController{
+    state : redemptionState,
+    currentTransaction?: string
+    requestsFilling?: decodedRequest[]
+    burningTransaction?: string
+}
 
 interface paymentPaths{
     state: state,
@@ -34,17 +43,23 @@ export class coordinator{
     bitcoinWatcher: bitcoinWatcher
     paymentPaths: paymentPaths[]
     config: protocolConfig
-    redemptionStack: redemptionsStack 
+    redemptionState: redemptionController
+    redemptionDb: Collection<redemptionController>
 
     constructor(cardanoWatcher : cardanoWatcher, bitcoinWatcher : bitcoinWatcher, protocol: protocolConfig){
         this.cardanoWatcher = cardanoWatcher;
         this.bitcoinWatcher = bitcoinWatcher;
         this.config  = protocol
-        this.redemptionStack = {requests: [], currentTransaction: ""};
+        this.redemptionDb = getDb("cNeta").collection("redemptionState");
+
+        (async () => {
+            this.redemptionState = await this.redemptionDb.findOne({}) || {state: redemptionState.open};
+        })();
+        
         this.paymentPaths = Array.from({length: this.bitcoinWatcher.getPaymentPaths()}, (_, index) => index).map((index) => {return {state: state.open, index: index}});
         this.getOpenRequests = this.getOpenRequests.bind(this);
         this.onNewCardanoBlock = this.onNewCardanoBlock.bind(this); 
-
+       
         emitter.on("newCardanoBlock", this.onNewCardanoBlock);
         emitter.on("newBtcBlock", this.onNewBtcBlock.bind(this));
 
@@ -56,7 +71,6 @@ export class coordinator{
 
         let redemptionRequests = openRequests.filter((request) => request.decodedDatum.destinationAddress);
 
-        console.log("Mint Requests", mintRequests);
         console.log("Redemption Requests", redemptionRequests);
         mintRequests.forEach((request) => {
             const index = request.decodedDatum.path;
@@ -69,18 +83,17 @@ export class coordinator{
                 this.cardanoWatcher.rejectRequest(request.txHash, request.outputIndex);
             }
         });
+        console.log("redeption state", this.redemptionState);
 
-
-        redemptionRequests.forEach((request) => {
-          if( !this.redemptionStack.requests.some((r) => requestId(r) === requestId(request))){
-            this.redemptionStack.requests.push(request);
-          }
-        });
-
-        if(this.redemptionStack.requests.length > 0 && this.redemptionStack.currentTransaction === ""){
+        if(  redemptionRequests.length  > 0 && this.redemptionState.state === redemptionState.open){
             try{
-                const requestsToFulfill = this.redemptionStack.requests.map((request) => requestId(request));
-                this.redemptionStack.currentTransaction = await this.bitcoinWatcher.craftRedemptionTransaction(this.redemptionStack.requests);
+                
+                this.redemptionState.currentTransaction = await this.bitcoinWatcher.craftRedemptionTransaction(redemptionRequests);
+                this.redemptionState.state = redemptionState.forged;
+                this.redemptionState.requestsFilling = redemptionRequests;
+                this.redemptionState.burningTransaction = await this.cardanoWatcher.burn(redemptionRequests, this.redemptionState.currentTransaction);
+                // store the transaction in the database
+                this.redemptionDb.findOneAndUpdate({}, {$set: this.redemptionState}, {upsert: true});
 
             }catch(e){
                 console.log("Error crafting redemption transaction", e);
@@ -92,7 +105,6 @@ export class coordinator{
     async onNewCardanoBlock(){
       console.log("New Cardano Block event");
       console.log(this.paymentPaths)
-      console.log(this.redemptionStack)
       await this.getOpenRequests();    
     }
 

@@ -1,5 +1,5 @@
 import { Db } from "mongodb";
-import { toHexString, txId } from "./helpers.js";
+import { toHexString, txId, hash } from "./helpers.js";
 import * as Lucid  from 'lucid-cardano'
 import { CardanoSyncClient , CardanoBlock } from "@utxorpc/sdk";
 import {cardanoConfig, topology, secretsConfig, decodedRequest, MintRequesrSchema, RedemptionRequestSchema, utxo} from "./types.js"
@@ -49,6 +49,56 @@ export class cardanoWatcher{
     }
 
 
+    async burn(requests: decodedRequest[], redemptionTx: string){
+        try{
+            
+            // check that we are synced with the tip
+            const MultisigDescriptorSchema = Lucid.Data.Object({ 
+                list: Lucid.Data.Array(Lucid.Data.Bytes()),
+                m: Lucid.Data.Integer(),
+                });
+                
+                
+            const metadata = await hash(redemptionTx);
+
+            type MultisigDescriptor = Lucid.Data.Static<typeof MultisigDescriptorSchema>;
+            const MultisigDescriptor = MultisigDescriptorSchema as unknown as MultisigDescriptor; 
+            
+            console.log("Config UTxO",this.configUtxo)
+            const multisig = Lucid.Data.from(this.configUtxo.datum, MultisigDescriptor);
+            console.log(multisig);
+            const openRequests =await this.lucid.provider.getUtxos(this.address);
+            const request = requests;
+            console.log(request)
+            
+            const spendingTx =  this.lucid.newTx().attachSpendingValidator(this.mintingScript).collectFrom(requests, Lucid.Data.void()).readFrom([this.configUtxo])
+    
+            
+            const signersTx = this.lucid.newTx().addSigner(await this.lucid.wallet.address())
+            const referenceInput = this.lucid.newTx().readFrom([this.configUtxo]);
+            const assets = {} 
+            assets[this.cBTCPolicy + "63425443"] = -requests.reduce((acc, request) => acc + Number(request.assets[this.cBTCPolicy + "63425443"]) , 0);
+            const mintTx = this.lucid.newTx().attachMintingPolicy(this.mintingScript).mintAssets(assets, Lucid.Data.void()).attachMetadata(METADATA_TAG, metadata);
+            
+          
+            const finalTx = this.lucid.newTx()
+                                      .compose(signersTx)
+                                      .compose(spendingTx)
+                                      .compose(mintTx)
+                                      .compose(referenceInput);
+                                    
+    
+            const completedTx = await finalTx.complete({change: { address: "addr_test1qrlmv3gjf253v49u8v5psxzwtlf6uljc5xf3a24ehfzcyz32ptyyevm796lgrkz2t5vrx3snmmsfh0ntc333mqf6eagstyc95m" },  coinSelection : false});
+            const signatures = await  completedTx.partialSign();
+            const signedTx = await completedTx.assemble([signatures]).complete();
+            console.log("signature", signatures);
+            console.log("completedTx", signedTx.toString());
+            return await signedTx.submit();    
+
+        }catch(e){
+                console.log(e);
+            }
+    }
     async fulfillRequest(txHash: string, index: number, payments: utxo[]){
         try{
             for(let payment of payments){
@@ -156,9 +206,7 @@ export class cardanoWatcher{
 
     }
      
-    async mint(){
 
-    }
 
     async getTip(){
         let tip = await axios.get("https://cardano-preview.blockfrost.io/api/v0/blocks/latest", {headers: {"project_id": "previewB9itCoBdnffsAjAyqLCSrGCB2kntLwWC"}});
@@ -318,8 +366,7 @@ export class cardanoWatcher{
 
         }else if(tip && tip.height >= block.header.height){
             throw new Error(`Block already processed ${block.header.height}, registered tip: ${tip.height}`); 
-            console.log("Already Processed Block", block.header.hash);
-            return false;
+
         }
 
         let blockHash = Buffer.from(block.header.hash).toString('hex');
@@ -345,17 +392,32 @@ export class cardanoWatcher{
             // find all mints of cBTC
 
             if(tx.mint.some((multiasset) => toHexString(multiasset.policyId) === this.cBTCPolicy)){
-                console.log("Minting Transaction", tx);
-                const payments = tx.auxiliary.metadata[0]?.value.metadatum.case === "array" ? tx.auxiliary.metadata[0].value.metadatum.value.items.map((item) => 
-                      item.metadatum.case === "array" ? txId(item.metadatum.value.items[0].metadatum.value as string, Number(item.metadatum.value.items[1].metadatum.value))   : undefined   
-                      )
-                    : [];
+                console.log("Minting Transaction", tx, tx.mint);
 
+                const multiasset = tx.mint.find((multiasset) => toHexString(multiasset.policyId) === this.cBTCPolicy);
+                console.log("Multiasset", multiasset.assets[0].mintCoin);  
+                const asset = multiasset.assets[0]; // assuming each Multiasset has exactly one Asset
+
+                if(asset.mintCoin > 0n){
+                    console.log(" Minting Transaction", tx);
+                    
+                    const payments = tx.auxiliary.metadata[0]?.value.metadatum.case === "array" ? tx.auxiliary.metadata[0].value.metadatum.value.items.map((item) => 
+                        item.metadatum.case === "array" ? txId(item.metadatum.value.items[0].metadatum.value as string, Number(item.metadatum.value.items[1].metadatum.value))   : undefined   
+                        )
+                        : [];
+
+                    
+                    console.log("Payments", tx.auxiliary, payments);
+                    this.mongo.collection("mint").insertOne({tx: tx, block: block.header.hash, height: block.header.height,payments });
+                }
                 
-                console.log("Payments", tx.auxiliary, payments);
-                this.mongo.collection("mint").insertOne({tx: tx, block: block.header.hash, height: block.header.height,payments });
+                else if(asset.mintCoin < 0n){
+                    console.log("Burning Transaction", tx);
+                    const redermptionTransaction = tx.auxiliary.metadata[0]?.value.metadatum.value; 
+                    this.mongo.collection("burn").insertOne({tx: tx, block: block.header.hash, height: block.header.height, redermptionTransaction });
+                }
             }
-        })) ;
+        }));
     }
 
 }

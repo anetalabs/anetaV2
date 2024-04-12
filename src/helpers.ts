@@ -8,6 +8,12 @@ export function toHexString(byteArray: Uint8Array): string {
     return Array.from(byteArray, (byte) => ('0' + (byte & 0xFF).toString(16)).slice(-2)).join('')
 }
 
+export async function hash(s: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(s);
+    const hash = await crypto.subtle.digest('SHA-256', data);
+    return toHexString(new Uint8Array(hash));
+}
 
 export function stringToHex(str) {
     let hex = '';
