@@ -4,9 +4,8 @@ import EventEmitter from "events";
 import { requestId } from "./helpers.js";
 export const emitter = new EventEmitter();
 import { decodedRequest, utxo , protocolConfig, MintRequesrSchema} from "./types.js";
-import { checkPrimeSync } from "crypto";
 import { getDb } from "./db.js";
-
+import { Collection } from "mongodb";
 enum state {
     open,
     commited,
@@ -53,10 +52,9 @@ export class coordinator{
 
     async getOpenRequests(){
         let openRequests = await this.cardanoWatcher.queryValidRequests();
-
         let mintRequests = openRequests.filter((request) => request.decodedDatum.path);
 
-        let redemptionRequests = openRequests.filter((request) => request.decodedDatum.destdinationAddress);
+        let redemptionRequests = openRequests.filter((request) => request.decodedDatum.destinationAddress);
 
         console.log("Mint Requests", mintRequests);
         console.log("Redemption Requests", redemptionRequests);
@@ -71,7 +69,7 @@ export class coordinator{
                 this.cardanoWatcher.rejectRequest(request.txHash, request.outputIndex);
             }
         });
-        
+
 
         redemptionRequests.forEach((request) => {
           if( !this.redemptionStack.requests.some((r) => requestId(r) === requestId(request))){
