@@ -3,13 +3,14 @@ import * as bitcoin from 'bitcoinjs-lib';
 import {ECPairFactory}  from 'ecpair'
 import * as ecc  from 'tiny-secp256k1'
 import { EventEmitter } from 'events';
-import {bitcoinConfig, topology, secretsConfig} from "./types.js"
+import {bitcoinConfig, topology, secretsConfig, decodedRequest} from "./types.js"
 import * as bip39 from 'bip39';
 import {BIP32Factory} from 'bip32';
 import { emitter } from "./coordinator.js";
 import { utxo } from "./types.js";
-import { checkPrimeSync } from "crypto";
+import { hexToString } from "./helpers.js";
 
+const cBTCiD = "95d93745addaa042497bb7bd8a63e1a1f39e848eff857ec0e981c7a963425443"
 const ECPair =  ECPairFactory(ecc);
 export const utxoEventEmitter = new EventEmitter();
 
@@ -154,8 +155,57 @@ export class bitcoinWatcher{
 
     }
 
+    craftRedemptionTransaction = async (requests: decodedRequest[]) => {
+        while ( this.isSynced === false) {
+            await new Promise((resolve) => setTimeout(resolve, 5000));
+        }
+        
+        const txb = new bitcoin.Psbt({network : bitcoin.networks[this.config.network] });
+        let total = 0;
+        let txSize = 10 + 34 * (requests.length+1)
+        const nonWitnessData = 41;
+        const witnessData = this.topology.m * 73 + this.topology.topology.length * 34 + 3 + this.topology.m + this.topology.topology.length * 34 + 1;
+        const inputSize = nonWitnessData + Math.ceil(witnessData / 4);
+        const utxos = this.utxos[this.utxos.length - 1 ].utxos;
+        console.log("crafting redemption transaction", requests, utxos);
+        const redeemScript = Buffer.from(this.getVaultRedeemScript(), 'hex');
+        for (let i = 0; i < utxos.length; i++) {
+            total += Math.round(utxos[i].amount * 100000000) ;
+            txb.addInput({
+                hash: utxos[i].txid,
+                index: utxos[i].vout,
+                witnessUtxo: {
+                    script: Buffer.from(utxos[i].scriptPubKey, 'hex'),
+                    value: Math.round(utxos[i].amount * 100_000_000),
+                },
+                witnessScript: redeemScript,
+            });
+        }
+
+        txSize += utxos.length * inputSize;
+        console.log(txSize)
+        if (total === 0) throw new Error('No UTXOs to redeem');
+        const feerate = await this.getFee() ;
+        const fee = Math.round( 100_000 * feerate  * txSize) ; //round to 8 decimal places
+        let amountToSend = 0
+        
+        requests.forEach((request) => {
+            console.log("request", hexToString( request.decodedDatum.destinationAddress), request.assets[cBTCiD])
+            txb.addOutput({address:hexToString( request.decodedDatum.destinationAddress), value: Number(request.assets[cBTCiD]) });
+            amountToSend += Number(request.assets[cBTCiD]);
+        });
+
+        txb.addOutput({address: this.getVaultAddress(), value: total - amountToSend - fee });
+        
+        
+        // if (amountToSend < requests.reduce((acc, request) => acc + Number(request.assets[cBTCiD]), 0)) throw new Error('Not enough funds');
+      
+        return(txb.toHex());
+    }
+
     consolidatePayments = async (indexs: number[]) => {
         try{
+
         const txb = new bitcoin.Psbt({network : bitcoin.networks[this.config.network] });
         let total = 0;
         let txSize = 10 + 35;
@@ -172,6 +222,7 @@ export class bitcoinWatcher{
             console.log("addressUtxos",indexs , addressUtxos)
             const redeemScript = Buffer.from(this.getRedeemScript(index), 'hex');
 
+            
         for (let i = 0; i < addressUtxos.length; i++) {
             console.log("amount", addressUtxos[i].amount)
             total += Math.round(this.btcToSat(addressUtxos[i].amount)) ;
@@ -199,9 +250,6 @@ export class bitcoinWatcher{
         txb.addOutput({address: this.getVaultAddress(), value: amount });
 
         txb.signAllInputs(this.watcherKey);
-        // for(let i = 0; i < txb.inputCount; i++){
-        //     txb.signInput(i, this.watcherKey);
-        // }
         txb.finalizeAllInputs();
         const tx = txb.extractTransaction();
 
@@ -285,7 +333,18 @@ export class bitcoinWatcher{
     
         return p2shAddress.address; 
     }
-        
+    
+    getVaultRedeemScript(){
+        const HexKeys =  this.topology.topology.map((guardian) => guardian.btcKey);
+        const pubkeys = HexKeys.map(key => Buffer.from(key, 'hex'));
+        const p2shAddress = bitcoin.payments.p2wsh({
+            redeem: bitcoin.payments.p2ms({ m: this.topology.m , pubkeys ,
+            network: bitcoin.networks[this.config.network], }),
+            network: bitcoin.networks[this.config.network],
+        });
+        return p2shAddress.redeem.output.toString('hex');
+    }
+
     getRedeemScript(index: number){
 
         const HexKeys =  this.topology.topology.map((guardian) => guardian.btcKey);
@@ -298,6 +357,7 @@ export class bitcoinWatcher{
         });
         return p2shAddress.redeem.output.toString('hex');
     }
+    
 
     getPaymentPaths(){
         return this.config.paymentPaths;

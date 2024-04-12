@@ -4,6 +4,5 @@
     "utxoCharge": 0.00001,
     "maxConsolidationTime" : 3,
     "consolidationThreshold" : 0.5
-
 }
 

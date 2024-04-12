@@ -1,15 +1,16 @@
-import { MongoClient } from "mongodb";
+import { Db } from "mongodb";
 import { toHexString, txId } from "./helpers.js";
 import * as Lucid  from 'lucid-cardano'
 import { CardanoSyncClient , CardanoBlock } from "@utxorpc/sdk";
-import {cardanoConfig, topology, secretsConfig, decodedRequest, MintRequesrSchema, utxo} from "./types.js"
+import {cardanoConfig, topology, secretsConfig, decodedRequest, MintRequesrSchema, RedemptionRequestSchema, utxo} from "./types.js"
 import {emitter}  from "./coordinator.js";
 import axios from "axios";
+import { getDb } from "./db.js";
 
 const METADATA_TAG = 85471236584;
 
 export class cardanoWatcher{
-    private mongo: MongoClient;
+    private mongo: Db;
     private lucid: Lucid.Lucid;
     private mintingScript: Lucid.Script;
     private syncing: boolean = true;
@@ -20,24 +21,15 @@ export class cardanoWatcher{
     private configUtxo : Lucid.UTxO;
 
     constructor(config: cardanoConfig, topology: topology, secrets: secretsConfig ){
-        let mongoClient = new MongoClient(config.mongo.connectionString);
+        this.mongo = getDb("cNeta")
+        console.log(typeof this.mongo)
         this.mintingScript = {type: "PlutusV2" , script: config.contract};
         this.queryValidRequests = this.queryValidRequests.bind(this);
-        mongoClient.connect()
-            .then(async (client) => {
 
-                this.mongo = client;
-                console.log("Connected to MongoDB");
-                console.time("dumpHistory");
-                await this.dumpHistory();
-                console.timeEnd("dumpHistory");
-                this.startIndexer();
-            })
-            .catch((error) => {
-                console.error("Failed to connect to MongoDB:", error);
-            });
+
 
         (async () => {
+           this.lucid = await Lucid.Lucid.new(new Lucid.Blockfrost(config.lucid.provider.host, "previewB9itCoBdnffsAjAyqLCSrGCB2kntLwWC"), (config.network.charAt(0).toUpperCase() + config.network.slice(1)) as Lucid.Network);
            this.lucid.selectWalletFromSeed(secrets.seed);
            console.log("Minting Script Address:", this.mintingScript);
            emitter.emit("notification", "Cardano Watcher Ready");
@@ -46,7 +38,10 @@ export class cardanoWatcher{
            this.configUtxo =await this.lucid.provider.getUtxoByUnit("a653490ca18233f06e7f69f4048f31ade4e3885750beae0170d7c8ae634e65746142726964676541646d696e");
            this.address =  this.lucid.utils.credentialToAddress({type: "Script", hash: this.cBTCPolicy});
            console.log("Address", this.address);
-           console.log("Local Address", await this.lucid.wallet.address());
+           console.log("Local Address", await this.lucid.wallet.address());    
+            await this.dumpHistory();
+            console.timeEnd("dumpHistory");
+            this.startIndexer();
         })();
         
 
@@ -97,7 +92,7 @@ export class cardanoWatcher{
                                       .compose(spendingTx)
                                       .compose(mintTx)
                                       .compose(referenceInput);
-    
+                                    
     
             const completedTx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false});
             const signatures = await  completedTx.partialSign();
@@ -166,6 +161,7 @@ export class cardanoWatcher{
     }
 
     async getTip(){
+        let tip = await axios.get("https://cardano-preview.blockfrost.io/api/v0/blocks/latest", {headers: {"project_id": "previewB9itCoBdnffsAjAyqLCSrGCB2kntLwWC"}});
         return tip;
     }
 
@@ -175,7 +171,7 @@ export class cardanoWatcher{
 
     async dumpHistory(){
         const chunkSize = 100; 
-        let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
+        let tip = await this.mongo.collection("height").findOne({type: "top"});
         console.log("tip" , tip);
         let tipPoint = undefined ;   
         if(tip){
@@ -198,7 +194,7 @@ export class cardanoWatcher{
             //set tip to the last block
             const lastBlock = chunk.block[chunk.block.length - 1].chain.value as CardanoBlock;
             console.log("Last Block", chunk);   
-            await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: Buffer.from(lastBlock.header.hash).toString('hex') , slot: lastBlock.header.slot, height: lastBlock.header.height}}, {upsert: true});
+            await this.mongo.collection("height").updateOne({type: "top"}, {$set: {hash: Buffer.from(lastBlock.header.hash).toString('hex') , slot: lastBlock.header.slot, height: lastBlock.header.height}}, {upsert: true});
             console.time("NextChunkFetch")
             chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize});
             console.timeEnd("NextChunkFetch")
@@ -212,22 +208,27 @@ export class cardanoWatcher{
     }
 
     async queryValidRequests(): Promise<decodedRequest[]> {
-        function requestIsProcessed(request: Lucid.UTxO){
-            return false
-        }
         try{
             const openRequests = await this.lucid.provider.getUtxos(this.address);
 
 
             const validRequests = openRequests.filter((request) => {
-                return request.datum && requestIsProcessed(request) === false;
+                return request.datum ;
             });
 
-
+       
+            
             const decodedRequests = validRequests.map((request) => {
+                const isMint = Object.keys(request.assets).length === 1;
                 const decodedRequest = request as decodedRequest; // Cast decodedRequest to the correct type
-                decodedRequest["decodedDatum"] =  this.decodeDatum(request.datum);
-                return decodedRequest;
+                try{    
+
+                    decodedRequest["decodedDatum"] = isMint ?  this.decodeDatum(request.datum) : this.decodeRedemptionDatum(request.datum);
+                    return decodedRequest;
+                }catch(e){
+                    console.log("Error Decoding Request", e);
+                    this.rejectRequest(request.txHash, request.outputIndex);
+                }
             });
             return decodedRequests;
         }catch(e){
@@ -237,7 +238,7 @@ export class cardanoWatcher{
     }
     
     async startIndexer() {
-        let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
+        let tip = await this.mongo.collection("height").findOne({type: "top"});
         let liveTip = await this.getTip();  
         console.log(liveTip.data)
 
@@ -288,24 +289,28 @@ export class cardanoWatcher{
 
     async paymentProcessed(payment: utxo): Promise<Boolean>{
         //find the payment in the list of mints in MongoDB, payments is a array of txId , check if the payment is in the list
-       const match = await this.mongo.db("cNeta").collection("mint").find({payments:  { $in : [txId(payment.txid, payment.vout)]}}).toArray();
+       const match = await this.mongo.collection("mint").find({payments:  { $in : [txId(payment.txid, payment.vout)]}}).toArray();
 
        return match.length > 0;
     }
 
     
     async handleUndoBlock(block: CardanoBlock){
-        await this.mongo.db("cNeta").collection("mint").deleteMany({block: block.header.hash});
+        await this.mongo.collection("mint").deleteMany({block: block.header.hash});
         let blockHash = Buffer.from(block.header.hash).toString('hex');
-        await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
+        await this.mongo.collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
     }
 
     decodeDatum(datum: string){
         return Lucid.Data.from(datum, MintRequesrSchema);
     }
+
+    decodeRedemptionDatum(datum: string){
+        return Lucid.Data.from(datum, RedemptionRequestSchema);
+    }
     
     async handleNewBlock(block: CardanoBlock) : Promise<Boolean>{
-        let tip = await this.mongo.db("cNeta").collection("height").findOne({type: "top"});
+        let tip = await this.mongo.collection("height").findOne({type: "top"});
 
         if(tip && tip.height == block.header.height){
             console.log("Block replaying tip", block.header.hash);
@@ -319,7 +324,8 @@ export class cardanoWatcher{
 
         let blockHash = Buffer.from(block.header.hash).toString('hex');
         this.registerNewBlock(block);
-        await this.mongo.db("cNeta").collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
+        
+        await this.mongo.collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
         if(!this.syncing )
             emitter.emit("newCardanoBlock")
         
@@ -330,6 +336,7 @@ export class cardanoWatcher{
 
 
     async getUtxoSender(hash : string, index: number){
+        const data = await axios.get("https://cardano-preview.blockfrost.io/api/v0/txs/" + hash + "/utxos", {headers: {"project_id": "previewB9itCoBdnffsAjAyqLCSrGCB2kntLwWC"}});
         return  data.data.inputs[index].address;
     }
 
@@ -346,7 +353,7 @@ export class cardanoWatcher{
 
                 
                 console.log("Payments", tx.auxiliary, payments);
-                this.mongo.db("cNeta").collection("mint").insertOne({tx: tx, block: block.header.hash, height: block.header.height,payments });
+                this.mongo.collection("mint").insertOne({tx: tx, block: block.header.hash, height: block.header.height,payments });
             }
         })) ;
     }

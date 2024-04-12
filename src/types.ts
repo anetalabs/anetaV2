@@ -79,8 +79,13 @@ export const MintRequesrSchema = Lucid.Data.Object({
   path: Lucid.Data.Integer(),
 });
 
+export const RedemptionRequestSchema = Lucid.Data.Object({
+  destinationAddress: Lucid.Data.Bytes()
+});
+
+
 export interface decodedRequest extends Lucid.UTxO{ 
-  decodedDatum: typeof MintRequesrSchema
+  decodedDatum: typeof MintRequesrSchema | typeof RedemptionRequestSchema
 }
 
 

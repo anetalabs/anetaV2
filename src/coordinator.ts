@@ -3,9 +3,9 @@ import { bitcoinWatcher } from "./bitcoin.js";
 import EventEmitter from "events";
 import { requestId } from "./helpers.js";
 export const emitter = new EventEmitter();
-import { decodedRequest, utxo , protocolConfig} from "./types.js";
+import { decodedRequest, utxo , protocolConfig, MintRequesrSchema} from "./types.js";
 import { checkPrimeSync } from "crypto";
-
+import { getDb } from "./db.js";
 
 enum state {
     open,
@@ -15,13 +15,19 @@ enum state {
     finished
 }
 
+interface redemptionsStack{
+    requests: decodedRequest[],
+    currentTransaction: string,
+    
+}
+
+
 interface paymentPaths{
     state: state,
     index: number,
     request?: decodedRequest,
     payment?: utxo[] | null,
     fulfillment?: string | null
-
 } 
 
 export class coordinator{
@@ -29,15 +35,16 @@ export class coordinator{
     bitcoinWatcher: bitcoinWatcher
     paymentPaths: paymentPaths[]
     config: protocolConfig
+    redemptionStack: redemptionsStack 
 
     constructor(cardanoWatcher : cardanoWatcher, bitcoinWatcher : bitcoinWatcher, protocol: protocolConfig){
         this.cardanoWatcher = cardanoWatcher;
         this.bitcoinWatcher = bitcoinWatcher;
         this.config  = protocol
-        
+        this.redemptionStack = {requests: [], currentTransaction: ""};
         this.paymentPaths = Array.from({length: this.bitcoinWatcher.getPaymentPaths()}, (_, index) => index).map((index) => {return {state: state.open, index: index}});
         this.getOpenRequests = this.getOpenRequests.bind(this);
-        this.onNewCardanoBlock = this.onNewCardanoBlock.bind(this);
+        this.onNewCardanoBlock = this.onNewCardanoBlock.bind(this); 
 
         emitter.on("newCardanoBlock", this.onNewCardanoBlock);
         emitter.on("newBtcBlock", this.onNewBtcBlock.bind(this));
@@ -46,7 +53,14 @@ export class coordinator{
 
     async getOpenRequests(){
         let openRequests = await this.cardanoWatcher.queryValidRequests();
-        openRequests.forEach((request) => {
+
+        let mintRequests = openRequests.filter((request) => request.decodedDatum.path);
+
+        let redemptionRequests = openRequests.filter((request) => request.decodedDatum.destdinationAddress);
+
+        console.log("Mint Requests", mintRequests);
+        console.log("Redemption Requests", redemptionRequests);
+        mintRequests.forEach((request) => {
             const index = request.decodedDatum.path;
             
             if (this.paymentPaths[index].state === state.open){
@@ -57,40 +71,46 @@ export class coordinator{
                 this.cardanoWatcher.rejectRequest(request.txHash, request.outputIndex);
             }
         });
-        return openRequests;
+        
+
+        redemptionRequests.forEach((request) => {
+          if( !this.redemptionStack.requests.some((r) => requestId(r) === requestId(request))){
+            this.redemptionStack.requests.push(request);
+          }
+        });
+
+        if(this.redemptionStack.requests.length > 0 && this.redemptionStack.currentTransaction === ""){
+            try{
+                const requestsToFulfill = this.redemptionStack.requests.map((request) => requestId(request));
+                this.redemptionStack.currentTransaction = await this.bitcoinWatcher.craftRedemptionTransaction(this.redemptionStack.requests);
+
+            }catch(e){
+                console.log("Error crafting redemption transaction", e);
+            }
+        }
         
     }
 
     async onNewCardanoBlock(){
       console.log("New Cardano Block event");
       console.log(this.paymentPaths)
+      console.log(this.redemptionStack)
       await this.getOpenRequests();    
-    //////
-      try{ 
-          await  this.checkPayments() 
-      }catch(e){
-        console.log(e);
-      }
-    /////
     }
 
     async onNewBtcBlock(){
         console.log("New BTC Block event");       
         this.checkPayments() 
-
     }
 
     async checkPayments(){
  
         this.paymentPaths.forEach((path, index) => {
             let payment = this.bitcoinWatcher.getUtxosByIndex(index);
-            console.log("path", path);
             if(path.state <= state.completed && payment.length > 0){
-                console.log("Checking path" + index + " for payment");
-                console.log("Payment", payment);   
+
                 payment.forEach(async (utxo) => {
                     if(await this.cardanoWatcher.paymentProcessed(utxo)){
-                        console.log("Payment already processed");
                         path.state = state.completed;
                     }
                 });
@@ -123,6 +143,7 @@ export class coordinator{
         this.consolidatePayments();
         
     }
+
 
     async consolidatePayments(){
         
