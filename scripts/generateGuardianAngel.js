@@ -32,3 +32,39 @@ async function main(){
 
 
 main()
+
+
+
+/// Optional update to change the way we do address derivation
+
+// import * as bitcoin from 'bitcoinjs-lib';
+// import * as bip32 from 'bip32';
+
+// // Assume seed is your HD wallet seed
+// let seed = 'your seed here';
+
+// // Create a BIP32 root key from the seed
+// let root = bip32.fromSeed(Buffer.from(seed, 'hex'));
+
+// // Assume m is the number of signatures required and pubkeys is an array of public keys
+// let m = 2;
+// let pubkeys = [];
+
+// // Generate a unique public key for each address
+// for (let i = 0; i < 3; i++) {
+//     let child = root.derivePath(`m/44'/0'/0'/${i}`);
+//     pubkeys.push(child.publicKey);
+// }
+
+// // Create a payment object
+// let payment: bitcoin.Payment = {
+//     m: m,
+//     n: pubkeys.length,
+//     pubkeys: pubkeys,
+//     network: bitcoin.networks.bitcoin
+// };
+
+// // Get the payment address
+// let address = bitcoin.payments.p2sh(payment).address;
+
+// console.log(address);

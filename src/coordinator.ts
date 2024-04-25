@@ -19,15 +19,15 @@ enum redemptionState{
     open,
     forged,
     burned,
-    submitted,
-    
+    completed,
 }
 
 interface redemptionController{
     state : redemptionState,
     currentTransaction?: string
     requestsFilling?: decodedRequest[]
-    burningTransaction?: string
+    burningTransaction?: string,
+    redemptionTx?: string
 }
 
 interface paymentPaths{
@@ -105,12 +105,30 @@ export class coordinator{
     async onNewCardanoBlock(){
       console.log("New Cardano Block event");
       console.log(this.paymentPaths)
-      await this.getOpenRequests();    
+      await this.getOpenRequests();  
+      await this.checkBurn(); 
+  
     }
 
     async onNewBtcBlock(){
         console.log("New BTC Block event");       
         this.checkPayments() 
+        this.checkRedemption();
+    }
+
+    async checkBurn(){
+        if(this.redemptionState.state === redemptionState.forged ){
+            if(await this.cardanoWatcher.isBurnConfirmed(this.redemptionState.burningTransaction)){
+                this.redemptionState.state = redemptionState.burned;
+                this.redemptionDb.findOneAndUpdate({}, {$set: this.redemptionState}, {upsert: true});
+            }   
+        }
+
+        if(this.redemptionState.state === redemptionState.burned){
+            this.redemptionState.redemptionTx = await this.bitcoinWatcher.completeRedemption(this.redemptionState.currentTransaction);
+            this.redemptionDb.findOneAndUpdate({}, {$set: this.redemptionState}, {upsert: true});
+
+        }
     }
 
     async checkPayments(){
@@ -154,6 +172,14 @@ export class coordinator{
         
     }
 
+    async checkRedemption(){
+        if(this.redemptionState.state === redemptionState.burned){
+            if(await this.bitcoinWatcher.isRedemptionConfirmed(this.redemptionState.redemptionTx)){
+                this.redemptionState.state = redemptionState.completed;
+                this.redemptionDb.findOneAndUpdate({}, {$set: this.redemptionState}, {upsert: true});
+            }
+        }
+    }
 
     async consolidatePayments(){
         

@@ -62,7 +62,8 @@ export type cardanoConfig = {
       host: string
       key: string
     }
-    contract: string
+    contract: string,
+    finality: number
   }
 
 export type notificationConfig = {

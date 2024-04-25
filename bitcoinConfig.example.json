@@ -3,8 +3,8 @@
         "username": "test",
         "password": "123456789",
         "port": 18332,
-        "host": "127.0.0.1",
-        "timeout": 30000
+        "host": "31.220.94.101",
+        "timeout": 50000
     },
     "falbackFeeRate": 0.00001,
     "BTCadminAddress": "tb1qdgf2y590vg6pya78sdfkjx047prjafgp90ek23",

@@ -19,14 +19,14 @@ export class cardanoWatcher{
     private mintRequests: any[] = [];
     private requestsFulfilled: string[] = [];
     private configUtxo : Lucid.UTxO;
-
+    private config: cardanoConfig;
     constructor(config: cardanoConfig, topology: topology, secrets: secretsConfig ){
         this.mongo = getDb("cNeta")
         console.log(typeof this.mongo)
         this.mintingScript = {type: "PlutusV2" , script: config.contract};
         this.queryValidRequests = this.queryValidRequests.bind(this);
 
-
+        this.config = config;
 
         (async () => {
            this.lucid = await Lucid.Lucid.new(new Lucid.Blockfrost(config.lucid.provider.host, "previewB9itCoBdnffsAjAyqLCSrGCB2kntLwWC"), (config.network.charAt(0).toUpperCase() + config.network.slice(1)) as Lucid.Network);
@@ -344,17 +344,32 @@ export class cardanoWatcher{
 
     
     async handleUndoBlock(block: CardanoBlock){
-        await this.mongo.collection("mint").deleteMany({block: block.header.hash});
-        let blockHash = Buffer.from(block.header.hash).toString('hex');
+        let blockHeight = block.header.height;
+        const blockHash = Buffer.from(block.header.hash).toString('hex');
+        await this.mongo.collection("mint").deleteMany({height: blockHeight});
+        await this.mongo.collection("burn").deleteMany({height: blockHeight});
+
+
         await this.mongo.collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
     }
 
+    
     decodeDatum(datum: string){
         return Lucid.Data.from(datum, MintRequesrSchema);
     }
 
     decodeRedemptionDatum(datum: string){
         return Lucid.Data.from(datum, RedemptionRequestSchema);
+    }
+
+    async isBurnConfirmed(txHash: string){
+        console.log("Checking Burn", txHash);
+        const tx = await this.mongo.collection("burn").findOne({ txHash: txHash});
+        console.log("Burn", tx);
+        const tip = await this.getTip();
+        if(!tx) return false;
+        const confirmations = tip.data.height - tx.height;
+        return  confirmations>= this.config.finality;
     }
     
     async handleNewBlock(block: CardanoBlock) : Promise<Boolean>{
@@ -414,7 +429,7 @@ export class cardanoWatcher{
                 else if(asset.mintCoin < 0n){
                     console.log("Burning Transaction", tx);
                     const redermptionTransaction = tx.auxiliary.metadata[0]?.value.metadatum.value; 
-                    this.mongo.collection("burn").insertOne({tx: tx, block: block.header.hash, height: block.header.height, redermptionTransaction });
+                    this.mongo.collection("burn").insertOne({tx: tx, txHash: toHexString( tx.hash),block: block.header.hash, height: block.header.height, redermptionTransaction });
                 }
             }
         }));

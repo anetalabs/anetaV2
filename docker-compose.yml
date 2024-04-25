@@ -1,0 +1,19 @@
+version: '3'
+
+services:
+  bitcoin-node:
+    build:
+      context: BtcCore
+      dockerfile: dockerfile
+    container_name: bitcoin_node
+    ports:
+      - "18332:18332"
+    volumes:
+      - ./node1:/data
+
+    networks:
+      - mynetwork
+
+networks:
+  mynetwork:
+    external: true

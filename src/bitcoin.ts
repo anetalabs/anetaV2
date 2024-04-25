@@ -203,6 +203,78 @@ export class bitcoinWatcher{
         return(txb.toHex());
     }
 
+    completeRedemption = async (txString: string) => {
+        const txb = bitcoin.Psbt.fromHex(txString, {network : bitcoin.networks[this.config.network] });
+        txb.signAllInputs(this.watcherKey);
+        txb.finalizeAllInputs();
+        const tx = txb.extractTransaction();
+        const txHex = tx.toHex();
+        const resault = await this.client.sendRawTransaction(txHex);
+        return resault;
+
+    }
+
+    isRedemptionConfirmed = async (txid: string) => {
+        const tx = await this.client.command('gettransaction', txid);
+        return tx.confirmations > this.config.Finality;
+    }
+
+    updatePendingFees = async () => {   
+        
+        try{
+            console.log("Updating pending fees")
+            // I want to get any tx that is in the mempool , consumes a utxo from one of my addresses and has a fee that is lower than the current fee rate
+            const txHash = "b610d22a81af27a590fb5bbfa159fe24ae6360130c4438b6a0af2e43b0587d45"
+            const txs =await this.client.getRawTransaction("b610d22a81af27a590fb5bbfa159fe24ae6360130c4438b6a0af2e43b0587d45", true)
+            console.log(txs.hex)
+            const oldTx = bitcoin.Transaction.fromHex(txs.hex);
+            const txb = new bitcoin.Psbt({network : bitcoin.networks[this.config.network] });
+            const addressUtxos = this.utxos[this.utxos.length -1].utxos;
+            let total = 0;
+            const redeemScript =  Buffer.from(this.getVaultRedeemScript(), 'hex');
+            
+            total += Math.round(oldTx.outs[oldTx.outs.length -1].value) ;
+            txb.addInput({
+                hash: txHash,
+                index: oldTx.outs.length -1,
+                witnessUtxo: {
+                    script: oldTx.outs[oldTx.outs.length -1].script,
+                    value: Math.round(oldTx.outs[oldTx.outs.length -1].value),
+                },
+                witnessScript: redeemScript,
+             });
+             
+
+            let outputTotal = 0;
+            
+            const feerate =   await this.getFee() ;
+            
+            const fee = Math.round( 100_000 * feerate  * txs.size)* 20 ; //round to 8 decimal places
+            
+            // Calculate the fee /////////////////////////////////////////////
+            const oldFee = this.btcToSat(0.00000397)  // TODO : get the fee from the tx
+
+            const amount = total - fee;
+            txb.addOutput({address: this.getVaultAddress(), value: amount });
+
+            console.log("old fee", oldFee, "new fee", fee, "outputTotal", amount, "total", total)
+        
+            
+            txb.txOutputs.forEach((output) => console.log("new output", output.value))
+            console.log("new Tx Inputs:",txb.txInputs)
+            txb.signAllInputs(this.watcherKey);
+            txb.finalizeAllInputs();
+            const tx = txb.extractTransaction();
+            const txHex = tx.toHex();
+            const resault = await this.client.sendRawTransaction(txHex);
+            console.log("fee update completed", resault);
+
+      
+        } catch (e) {
+            console.log(e)
+        }
+    }
+
     consolidatePayments = async (indexs: number[]) => {
         try{
 
@@ -288,7 +360,7 @@ export class bitcoinWatcher{
             acc[address].push(utxo);
             return acc;
         }, {});
-
+        
         
         this.utxos = this.address.map((address, index) => ({
             index,
@@ -300,7 +372,6 @@ export class bitcoinWatcher{
             address: this.getVaultAddress(),
             utxos: utxosByAddress[this.getVaultAddress()] || []
         });
-
         this.utxos.map((address) => console.log(address.utxos))
         console.log("Vault", this.utxos[this.address.length])
         emitter.emit("newBtcBlock");
@@ -320,7 +391,7 @@ export class bitcoinWatcher{
     
         return p2shAddress.address; 
     }
-
+    
     getAddress(index: number){
         const HexKeys =  this.topology.topology.map((guardian) => guardian.btcKey);
         HexKeys.push(this.fillerKey(index +1));
