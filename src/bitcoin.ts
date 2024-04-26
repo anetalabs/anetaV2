@@ -32,7 +32,7 @@ export class bitcoinWatcher{
     private watcherKey: any; 
     private config: bitcoinConfig ;
     private topology: topology;
-
+    private gettingUtxos: boolean = false;
 
     constructor(config : bitcoinConfig, topology : topology, secrets : secretsConfig){
         console.log("bitcoin watcher")
@@ -57,6 +57,7 @@ export class bitcoinWatcher{
         let lastHeight = await this.getHeight();
         console.log(lastHeight);
 
+
         setInterval(async () => {
             const currentHeight = await this.getHeight();
             if (currentHeight !== lastHeight) {
@@ -66,7 +67,7 @@ export class bitcoinWatcher{
                 emitter.emit("newBtcBlock");
                 
             }
-        }, 5000); // Check every 5 seconds
+        }, 15000); // Check every 5 seconds
     }
 
     getHeight = async () => {
@@ -345,6 +346,8 @@ export class bitcoinWatcher{
 
     getUtxos = async () => {
         try{
+        if (this.gettingUtxos) return;
+        this.gettingUtxos = true;
         const descriptors = this.address.map(address => ({ 'desc': `addr(${address})`, 'range': 1000 }));
         descriptors.push({ 'desc': `addr(${this.getVaultAddress()})`, 'range': 1000 });
         const height = await this.getHeight()
@@ -375,8 +378,10 @@ export class bitcoinWatcher{
         this.utxos.map((address) => console.log(address.utxos))
         console.log("Vault", this.utxos[this.address.length])
         emitter.emit("newBtcBlock");
+        this.gettingUtxos = false;
     } catch (e) {
         console.log(e)
+        this.gettingUtxos = false;
     }
     }
 
