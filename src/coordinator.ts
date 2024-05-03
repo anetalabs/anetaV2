@@ -3,7 +3,7 @@ import { bitcoinWatcher } from "./bitcoin.js";
 import EventEmitter from "events";
 import { requestId } from "./helpers.js";
 export const emitter = new EventEmitter();
-import { decodedRequest, utxo , protocolConfig, MintRequesrSchema} from "./types.js";
+import { redemptionRequest, mintRequest,  utxo , protocolConfig, MintRequestSchema} from "./types.js";
 import { getDb } from "./db.js";
 import { Collection } from "mongodb";
 
@@ -25,15 +25,16 @@ enum redemptionState{
 interface redemptionController{
     state : redemptionState,
     currentTransaction?: string
-    requestsFilling?: decodedRequest[]
+    requestsFilling?: redemptionRequest[]
     burningTransaction?: string,
     redemptionTx?: string
 }
 
 interface paymentPaths{
     state: state,
+    address: string,
     index: number,
-    request?: decodedRequest,
+    request?: mintRequest,
     payment?: utxo[] | null,
     fulfillment?: string | null
 } 
@@ -56,7 +57,7 @@ export class coordinator{
             this.redemptionState = await this.redemptionDb.findOne({}) || {state: redemptionState.open};
         })();
         
-        this.paymentPaths = Array.from({length: this.bitcoinWatcher.getPaymentPaths()}, (_, index) => index).map((index) => {return {state: state.open, index: index}});
+        this.paymentPaths = Array.from({length: this.bitcoinWatcher.getPaymentPaths()}, (_, index) => index).map((index) => {return {state: state.open, index: index , address: this.bitcoinWatcher.getAddress(index)}});
         this.getOpenRequests = this.getOpenRequests.bind(this);
         this.onNewCardanoBlock = this.onNewCardanoBlock.bind(this); 
        
@@ -66,15 +67,14 @@ export class coordinator{
     }
 
     async getOpenRequests(){
-        let openRequests = await this.cardanoWatcher.queryValidRequests();
-        let mintRequests = openRequests.filter((request) => request.decodedDatum.path);
+        let [mintRequests , redemptionRequests] = await this.cardanoWatcher.queryValidRequests();
 
-        let redemptionRequests = openRequests.filter((request) => request.decodedDatum.destinationAddress);
 
+        console.log("Mint Requests", mintRequests);
         console.log("Redemption Requests", redemptionRequests);
         mintRequests.forEach((request) => {
             const index = request.decodedDatum.path;
-            
+            console.log("Minting request", request);
             if (this.paymentPaths[index].state === state.open){
                 this.paymentPaths[index].state = state.commited;
                 this.paymentPaths[index].request = request;
@@ -83,7 +83,8 @@ export class coordinator{
                 this.cardanoWatcher.rejectRequest(request.txHash, request.outputIndex);
             }
         });
-        console.log("redeption state", this.redemptionState);
+
+        console.log("redeption state", this.redemptionState);  
 
         if(  redemptionRequests.length  > 0 && this.redemptionState.state === redemptionState.open){
             try{
@@ -145,18 +146,22 @@ export class coordinator{
             }
 
             if(path.state === state.finished && payment.length  === 0){
-                path = {state: state.open, index: index};
+                path = {state: state.open, index: index , address: this.bitcoinWatcher.getAddress(index)};
             }
 
 
             if (path.state === state.commited && payment.length > 0){
                 let sum = this.bitcoinWatcher.btcToSat(payment.reduce((acc, utxo) => acc + utxo.amount, 0));
-                console.log("sum", sum);
                 const fee = this.bitcoinWatcher.btcToSat(this.config.fixedFee) 
-                            + this.config.margin * Number(path.request.decodedDatum.amount)
-                            + this.config.utxoCharge * (payment.length -1);
-
-                console.log("fee", fee);
+                + this.config.margin * Number(path.request.decodedDatum.amount)
+                + this.config.utxoCharge * (payment.length -1);
+                
+                console.log(`checking payment for path ${index} 
+                            current total payment: ${sum}
+                            utxos: ${payment.length}
+                            fee: ${fee}
+                            minting amount: ${path.request.decodedDatum.amount}
+                            total payment required: ${Number(path.request.decodedDatum.amount) + fee} `.trim());
 
                 if(sum  >= (Number(path.request.decodedDatum.amount) + fee)){
                     console.log("Payment found");

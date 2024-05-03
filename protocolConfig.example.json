@@ -1,6 +1,6 @@
 {
-    "fixedFee": 0.0001,
-    "margin": 0.1,
+    "fixedFee": 0.0000,
+    "margin": 0.0,
     "utxoCharge": 0.00001,
     "maxConsolidationTime" : 3,
     "consolidationThreshold" : 0.5

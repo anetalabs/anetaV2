@@ -3,7 +3,7 @@ import * as bitcoin from 'bitcoinjs-lib';
 import {ECPairFactory}  from 'ecpair'
 import * as ecc  from 'tiny-secp256k1'
 import { EventEmitter } from 'events';
-import {bitcoinConfig, topology, secretsConfig, decodedRequest} from "./types.js"
+import {bitcoinConfig, topology, secretsConfig,  redemptionRequest} from "./types.js"
 import * as bip39 from 'bip39';
 import {BIP32Factory} from 'bip32';
 import { emitter } from "./coordinator.js";
@@ -156,7 +156,7 @@ export class bitcoinWatcher{
 
     }
 
-    craftRedemptionTransaction = async (requests: decodedRequest[]) => {
+    craftRedemptionTransaction = async (requests: redemptionRequest[]) => {
         while ( this.isSynced === false) {
             await new Promise((resolve) => setTimeout(resolve, 5000));
         }

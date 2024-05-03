@@ -1,3 +1,4 @@
+import exp from 'constants'
 import * as Lucid  from 'lucid-cardano'
 
 export type nodeStatus = {  
@@ -75,7 +76,7 @@ export type secretsConfig ={
     "seed" : string
 }
 
-export const MintRequesrSchema = Lucid.Data.Object({
+export const MintRequestSchema = Lucid.Data.Object({
   amount: Lucid.Data.Integer(),
   path: Lucid.Data.Integer(),
 });
@@ -84,9 +85,12 @@ export const RedemptionRequestSchema = Lucid.Data.Object({
   destinationAddress: Lucid.Data.Bytes()
 });
 
+export interface mintRequest extends Lucid.UTxO{ 
+  decodedDatum:  typeof MintRequestSchema
+}
 
-export interface decodedRequest extends Lucid.UTxO{ 
-  decodedDatum: typeof MintRequesrSchema | typeof RedemptionRequestSchema
+export interface redemptionRequest extends Lucid.UTxO{
+  decodedDatum: typeof RedemptionRequestSchema
 }
 
 

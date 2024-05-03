@@ -2,7 +2,7 @@ import { Db } from "mongodb";
 import { toHexString, txId, hash } from "./helpers.js";
 import * as Lucid  from 'lucid-cardano'
 import { CardanoSyncClient , CardanoBlock } from "@utxorpc/sdk";
-import {cardanoConfig, topology, secretsConfig, decodedRequest, MintRequesrSchema, RedemptionRequestSchema, utxo} from "./types.js"
+import {cardanoConfig, topology, secretsConfig, mintRequest , MintRequestSchema, RedemptionRequestSchema, utxo, redemptionRequest} from "./types.js"
 import {emitter}  from "./coordinator.js";
 import axios from "axios";
 import { getDb } from "./db.js";
@@ -49,7 +49,7 @@ export class cardanoWatcher{
     }
 
 
-    async burn(requests: decodedRequest[], redemptionTx: string){
+    async burn(requests: redemptionRequest[], redemptionTx: string){
         try{
             
             // check that we are synced with the tip
@@ -99,6 +99,7 @@ export class cardanoWatcher{
                 console.log(e);
             }
     }
+
     async fulfillRequest(txHash: string, index: number, payments: utxo[]){
         try{
             for(let payment of payments){
@@ -255,7 +256,7 @@ export class cardanoWatcher{
 
     }
 
-    async queryValidRequests(): Promise<decodedRequest[]> {
+    async queryValidRequests(): Promise< [mintRequest[], redemptionRequest[]]> {
         try{
             const openRequests = await this.lucid.provider.getUtxos(this.address);
 
@@ -266,22 +267,44 @@ export class cardanoWatcher{
 
        
             
-            const decodedRequests = validRequests.map((request) => {
+            const mintRequests = validRequests.map((request) => {
                 const isMint = Object.keys(request.assets).length === 1;
-                const decodedRequest = request as decodedRequest; // Cast decodedRequest to the correct type
-                try{    
+                if(isMint){
+                const decodedRequest = request as mintRequest; // Cast decodedRequest to the correct type
+                    try{    
 
-                    decodedRequest["decodedDatum"] = isMint ?  this.decodeDatum(request.datum) : this.decodeRedemptionDatum(request.datum);
-                    return decodedRequest;
-                }catch(e){
-                    console.log("Error Decoding Request", e);
-                    this.rejectRequest(request.txHash, request.outputIndex);
+                        decodedRequest["decodedDatum"] = this.decodeDatum(request.datum)
+                        return decodedRequest;
+                    
+                    }catch(e){
+                        console.log("Error Decoding Request", e);
+                        this.rejectRequest(request.txHash, request.outputIndex);
+                    }
                 }
             });
-            return decodedRequests;
+
+            const redemptionRequests = validRequests.map((request) => {
+
+                const isRedemption = Object.keys(request.assets).length === 1;
+                if(isRedemption){
+                    const decodedRequest = request as redemptionRequest; // Cast decodedRequest to the correct type
+                    try{    
+                        decodedRequest["decodedDatum"] = this.decodeRedemptionDatum(request.datum)
+                        return decodedRequest;
+                    
+                    }catch(e){
+                        console.log("Error Decoding Request", e);
+                        this.rejectRequest(request.txHash, request.outputIndex);
+                    }
+                }
+            });
+
+            return [ mintRequests , redemptionRequests  ];
+
+
         }catch(e){
             console.log(e);
-            return [];
+            return [ [], []];
         }
     }
     
@@ -354,8 +377,8 @@ export class cardanoWatcher{
     }
 
     
-    decodeDatum(datum: string){
-        return Lucid.Data.from(datum, MintRequesrSchema);
+    decodeDatum(datum: string)  {
+        return Lucid.Data.from(datum, MintRequestSchema);
     }
 
     decodeRedemptionDatum(datum: string){
