@@ -1,4 +1,5 @@
 {
+        "DbName" : "cNeta",
         "network": "preview",
         "paymentAddress" : "addr_test1qqjg030vffsy7jav0802dr5unfv06dn5avtqh7028ykrd2l3meyrd8efkt952egccka06epqkye4j9fnrarjjjhrxz2sufjewr",
         "mongo": {

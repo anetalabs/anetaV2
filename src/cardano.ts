@@ -21,7 +21,7 @@ export class cardanoWatcher{
     private configUtxo : Lucid.UTxO;
     private config: cardanoConfig;
     constructor(config: cardanoConfig, topology: topology, secrets: secretsConfig ){
-        this.mongo = getDb("cNeta")
+        this.mongo = getDb(config.DbName)
         console.log(typeof this.mongo)
         this.mintingScript = {type: "PlutusV2" , script: config.contract};
         this.queryValidRequests = this.queryValidRequests.bind(this);
@@ -48,6 +48,9 @@ export class cardanoWatcher{
         console.log("cardano watcher")
     }
 
+    getDbName() : string{
+      return  this.config.DbName;
+    }
 
     async burn(requests: redemptionRequest[], redemptionTx: string){
         try{
@@ -259,13 +262,13 @@ export class cardanoWatcher{
     async queryValidRequests(): Promise< [mintRequest[], redemptionRequest[]]> {
         try{
             const openRequests = await this.lucid.provider.getUtxos(this.address);
-
+            console.log("Open Requests", openRequests);
 
             const validRequests = openRequests.filter((request) => {
                 return request.datum ;
             });
 
-       
+    
             
             const mintRequests = validRequests.map((request) => {
                 const isMint = Object.keys(request.assets).length === 1;
@@ -298,7 +301,9 @@ export class cardanoWatcher{
                     }
                 }
             });
-
+            //remove undefined values
+            mintRequests.filter((request) => request);
+            redemptionRequests.filter((request) => request);
             return [ mintRequests , redemptionRequests  ];
 
 

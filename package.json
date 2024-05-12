@@ -8,9 +8,9 @@
     "clean": "rimraf dist",
     "start": "npm-run-all --parallel watch:build watch:server --print-label",
     "p2pDev": "concurrently --kill-others \"tsc --watch\" \"npm run p2p:1\" \"npm run p2p:2\"",
-    "p2p:1": "nodemon dist/index.js --watch ./dist --topology testConfigs/distributedhhRaftTests/topology.json --secrets testConfigs/distributedhhRaftTests/Member1/secrets.example.json",
-    "p2p:2": "nodemon dist/index.js --watch ./dist --port 3001 --topology testConfigs/distributedhhRaftTests/topology.json --secrets testConfigs/distributedhhRaftTests/Member2/secrets.example.json",
-    "p2p:3": "nodemon dist/index.js --watch ./dist --port 3002 --topology testConfigs/distributedhhRaftTests/topology.json --secrets testConfigs/distributedhhRaftTests/Member3/secrets.example.json",
+    "p2p:1": "nodemon dist/index.js --watch ./dist --topology testConfigs/distributedhhRaftTests/topology.json --secrets testConfigs/distributedhhRaftTests/Member1/secrets.example.json --bitcoinConfig testConfigs/distributedhhRaftTests/Member1/bitcoinConfig.json --cardanoConfig testConfigs/distributedhhRaftTests/Member1/cardanoConfig.json ",
+    "p2p:2": "nodemon dist/index.js --watch ./dist --port 3001 --topology testConfigs/distributedhhRaftTests/topology.json --secrets testConfigs/distributedhhRaftTests/Member2/secrets.example.json --bitcoinConfig testConfigs/distributedhhRaftTests/Member2/bitcoinConfig.json --cardanoConfig testConfigs/distributedhhRaftTests/Member2/cardanoConfig.json",
+    "p2p:3": "nodemon dist/index.js --watch ./dist --port 3002 --topology testConfigs/distributedhhRaftTests/topology.json --secrets testConfigs/distributedhhRaftTests/Member3/secrets.example.json --bitcoinConfig testConfigs/distributedhhRaftTests/Member3/bitcoinConfig.json --cardanoConfig testConfigs/distributedhhRaftTests/Member3/cardanoConfig.json",
     "watch:build": "tsc --watch",
     "watch:server": "nodemon dist/index.js --watch ./dist"
   },

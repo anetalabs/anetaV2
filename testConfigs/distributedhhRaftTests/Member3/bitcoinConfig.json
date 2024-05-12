@@ -2,10 +2,11 @@
     "bitcoinRPC" :{
         "username": "test",
         "password": "123456789",
-        "port": 18332,
-        "host": "127.0.0.1",
-        "timeout": 30000
+        "port": 18333,
+        "host": "31.220.94.101",
+        "timeout": 700000
     },
+    "falbackFeeRate": 0.00001,
     "BTCadminAddress": "tb1qdgf2y590vg6pya78sdfkjx047prjafgp90ek23",
     "BTCPrivKey": "163eaddd8b52055430cd26f80716a6ba226259b6b04cfd8d12bee9be4ef21012",
     "Finality" : 0,

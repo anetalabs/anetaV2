@@ -21,9 +21,6 @@ type addressUtxos = {
 }
 
 
-
-
-
 export class bitcoinWatcher{
     private client: BitcoinCore;
     private address: string[];

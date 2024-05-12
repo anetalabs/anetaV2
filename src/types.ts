@@ -48,6 +48,7 @@ export type protocolConfig = {
 }
 
 export type cardanoConfig = {
+    DbName : string,
     network: string
     paymentAddress: string
     mongo: {

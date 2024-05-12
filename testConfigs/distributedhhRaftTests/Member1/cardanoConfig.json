@@ -1,4 +1,5 @@
 {
+        "DbName" : "cNeta1",    
         "network": "preview",
         "mintingScript": { "keyHash": "2487c5ec4a604f4bac79dea68e9c9a58fd3674eb160bf9ea392c36ab", "type": "sig" },
         "paymentAddress" : "addr_test1qqjg030vffsy7jav0802dr5unfv06dn5avtqh7028ykrd2l3meyrd8efkt952egccka06epqkye4j9fnrarjjjhrxz2sufjewr",

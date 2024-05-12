@@ -51,7 +51,7 @@ export class coordinator{
         this.cardanoWatcher = cardanoWatcher;
         this.bitcoinWatcher = bitcoinWatcher;
         this.config  = protocol
-        this.redemptionDb = getDb("cNeta").collection("redemptionState");
+        this.redemptionDb = getDb(cardanoWatcher.getDbName()).collection("redemptionState");
 
         (async () => {
             this.redemptionState = await this.redemptionDb.findOne({}) || {state: redemptionState.open};
@@ -66,6 +66,7 @@ export class coordinator{
 
     }
 
+    
     async getOpenRequests(){
         let [mintRequests , redemptionRequests] = await this.cardanoWatcher.queryValidRequests();
 
