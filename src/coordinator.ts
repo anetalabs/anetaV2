@@ -6,6 +6,7 @@ export const emitter = new EventEmitter();
 import { redemptionRequest, mintRequest,  utxo , protocolConfig, MintRequestSchema} from "./types.js";
 import { getDb } from "./db.js";
 import { Collection } from "mongodb";
+import { emit } from "process";
 
 enum state {
     open,
@@ -106,10 +107,10 @@ export class coordinator{
 
     async onNewCardanoBlock(){
       console.log("New Cardano Block event");
-      console.log(this.paymentPaths)
+      
       await this.getOpenRequests();  
       await this.checkBurn(); 
-  
+      emitter.emit("paymentPathsUpdate", this.paymentPaths);
     }
 
     async onNewBtcBlock(){

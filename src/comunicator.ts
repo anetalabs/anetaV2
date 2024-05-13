@@ -1,4 +1,4 @@
-import { emitter } from './coordinator';
+import { emitter } from './coordinator.js';
 import { topology, secretsConfig } from './types';
 import { Server, Socket as ServerSocket } from 'socket.io';
 import { Socket as ClientSocket } from 'socket.io-client';
@@ -194,12 +194,8 @@ export class Communicator {
             }
         }
         
-        console.log('leaderTimeout:', new Date(this.leaderTimeout).getTime() - new Date().getTime());
         this.peers.forEach((node, index) => {
-            console.log('Node:', node.id, 
-            node.incomingConnection ? true : false, 
-            node.outgoingConnection ? true : false,
-            node.state)
+         
             
             if(node.outgoingConnection === null ){
                 this.connect(index);
@@ -211,6 +207,17 @@ export class Communicator {
             
 
         })
+
+        const peerStatus = this.peers.map((node) => {
+            return {
+                id: node.id,
+                incomingConnection: node.incomingConnection ? true : false,
+                outgoingConnection: node.outgoingConnection ? true : false,
+                state: node.state
+            };
+        });
+
+        emitter.emit('networkingStatus', {peers: peerStatus, leaderTimeout : new Date(this.leaderTimeout).getTime() - new Date().getTime() });
     }
 
     private stringToHex(str: string) {

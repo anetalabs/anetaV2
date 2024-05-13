@@ -3,6 +3,7 @@ import { bitcoinWatcher } from "./bitcoin.js";
 import { notificationManager } from "./notifications.js";
 import { coordinator } from "./coordinator.js";
 import { Communicator } from "./comunicator.js";
+import ApiServer from "./api.js";
 import { cardanoConfig, bitcoinConfig, notificationConfig, topology, secretsConfig, protocolConfig } from "./types.js";
 import minimist from 'minimist';
 import fs from 'fs';
@@ -23,13 +24,15 @@ async function main() {
     const topology : topology =  JSON.parse((await readFile(args.topology || './topology.example.json')).toString());
     const secrets : secretsConfig= JSON.parse((await  readFile(args.secrets || './secrets.example.json')).toString() );
     const protocolConfig : protocolConfig = JSON.parse((await readFile(args.protocolConfig || './protocolConfig.example.json')).toString());
-    
+    const server = new ApiServer();
+    server.start(args.apiPort || 3030);
+
     connect(cardanoConfig.mongo.connectionString);
 
 
 
     //////////////////////////////////////////////////////
-    //const communicator = new Communicator(topology, secrets, args.port || 3000)
+    const communicator = new Communicator(topology, secrets, args.port || 3000)
     const notification = new notificationManager(notificationConfig)
     const watcher = new bitcoinWatcher(bitcoinConfig, topology, secrets)
     const ADAWatcher = new cardanoWatcher(cardanoConfig, topology, secrets)

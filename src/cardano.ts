@@ -15,6 +15,7 @@ export class cardanoWatcher{
     private mintingScript: Lucid.Script;
     private syncing: boolean = true;
     private cBTCPolicy: Lucid.PolicyId;
+    private cBtcHex: string;
     private address: string;
     private mintRequests: any[] = [];
     private requestsFulfilled: string[] = [];
@@ -35,6 +36,7 @@ export class cardanoWatcher{
            emitter.emit("notification", "Cardano Watcher Ready");
            this.cBTCPolicy = this.lucid.utils.mintingPolicyToId(this.mintingScript);
            console.log("Minting PolicyId:", this.cBTCPolicy);
+           this.cBtcHex = "63425443";
            this.configUtxo =await this.lucid.provider.getUtxoByUnit("a653490ca18233f06e7f69f4048f31ade4e3885750beae0170d7c8ae634e65746142726964676541646d696e");
            this.address =  this.lucid.utils.credentialToAddress({type: "Script", hash: this.cBTCPolicy});
            console.log("Address", this.address);
@@ -80,7 +82,7 @@ export class cardanoWatcher{
             const signersTx = this.lucid.newTx().addSigner(await this.lucid.wallet.address())
             const referenceInput = this.lucid.newTx().readFrom([this.configUtxo]);
             const assets = {} 
-            assets[this.cBTCPolicy + "63425443"] = -requests.reduce((acc, request) => acc + Number(request.assets[this.cBTCPolicy + "63425443"]) , 0);
+            assets[this.cBTCPolicy + this.cBtcHex] = -requests.reduce((acc, request) => acc + Number(request.assets[this.cBTCPolicy +  this.cBtcHex]) , 0);
             const mintTx = this.lucid.newTx().attachMintingPolicy(this.mintingScript).mintAssets(assets, Lucid.Data.void()).attachMetadata(METADATA_TAG, metadata);
             
           
@@ -165,48 +167,49 @@ export class cardanoWatcher{
     }
 
     async rejectRequest(txHash: string, index: number){
-        try{
+        console.log("Rejecting Request", txHash, index);
+    //     try{
 
-        const MultisigDescriptorSchema = Lucid.Data.Object({ 
-            list: Lucid.Data.Array(Lucid.Data.Bytes()),
-            m: Lucid.Data.Integer(),
-            });
+    //     const MultisigDescriptorSchema = Lucid.Data.Object({ 
+    //         list: Lucid.Data.Array(Lucid.Data.Bytes()),
+    //         m: Lucid.Data.Integer(),
+    //         });
             
             
-        type MultisigDescriptor = Lucid.Data.Static<typeof MultisigDescriptorSchema>;
-        const MultisigDescriptor = MultisigDescriptorSchema as unknown as MultisigDescriptor; 
-        console.log("Config UTxO",this.configUtxo)
-        const multisig = Lucid.Data.from(this.configUtxo.datum, MultisigDescriptor);
-        console.log(multisig);
-        const openRequests =await this.lucid.provider.getUtxos(this.address);
-        const request = openRequests.find( (request) => request.txHash === txHash && request.outputIndex === index);
-        console.log(request)
+    //     type MultisigDescriptor = Lucid.Data.Static<typeof MultisigDescriptorSchema>;
+    //     const MultisigDescriptor = MultisigDescriptorSchema as unknown as MultisigDescriptor; 
+    //     console.log("Config UTxO",this.configUtxo)
+    //     const multisig = Lucid.Data.from(this.configUtxo.datum, MultisigDescriptor);
+    //     console.log(multisig);
+    //     const openRequests =await this.lucid.provider.getUtxos(this.address);
+    //     const request = openRequests.find( (request) => request.txHash === txHash && request.outputIndex === index);
+    //     console.log(request)
         
-        const spendingTx =  this.lucid.newTx().attachSpendingValidator(this.mintingScript).collectFrom([request], Lucid.Data.void()).readFrom([this.configUtxo])
+    //     const spendingTx =  this.lucid.newTx().attachSpendingValidator(this.mintingScript).collectFrom([request], Lucid.Data.void()).readFrom([this.configUtxo])
 
         
-        const signersTx = this.lucid.newTx().addSigner(await this.lucid.wallet.address())
-        const referenceInput = this.lucid.newTx().readFrom([this.configUtxo]);
+    //     const signersTx = this.lucid.newTx().addSigner(await this.lucid.wallet.address())
+    //     const referenceInput = this.lucid.newTx().readFrom([this.configUtxo]);
         
-        const outputTx = this.lucid.newTx().payToAddress(await this.getUtxoSender(txHash, index), { "lovelace": 1000000n});
-        const finalTx = this.lucid.newTx()
-                                  .compose(signersTx)
-                                  .compose(spendingTx)
-                               //   .compose(outputTx)
+    //     const outputTx = this.lucid.newTx().payToAddress(await this.getUtxoSender(txHash, index), { "lovelace": 1000000n});
+    //     const finalTx = this.lucid.newTx()
+    //                               .compose(signersTx)
+    //                               .compose(spendingTx)
+    //                            //   .compose(outputTx)
 
-                                  .compose(referenceInput);
+    //                               .compose(referenceInput);
 
 
-        const completedTx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false});
-        const signatures = await  completedTx.partialSign();
-        const signedTx = await completedTx.assemble([signatures]).complete();
-        console.log("signature", signatures);
-        console.log("completedTx", signedTx.toString());
-        await signedTx.submit();    
-        this.requestsFulfilled.push(this.requestId(request));
-    }catch(e){
-            console.log(e);
-        }
+    //     const completedTx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false});
+    //     const signatures = await  completedTx.partialSign();
+    //     const signedTx = await completedTx.assemble([signatures]).complete();
+    //     console.log("signature", signatures);
+    //     console.log("completedTx", signedTx.toString());
+    //     await signedTx.submit();    
+    //     this.requestsFulfilled.push(this.requestId(request));
+    // }catch(e){
+    //         console.log(e);
+    //     }
 
     }
      
@@ -261,7 +264,7 @@ export class cardanoWatcher{
 
     async queryValidRequests(): Promise< [mintRequest[], redemptionRequest[]]> {
         try{
-            const openRequests = await this.lucid.provider.getUtxos(this.address);
+            const openRequests = ((await this.lucid.provider.getUtxos(this.address)).filter((request) => request.datum));
             console.log("Open Requests", openRequests);
 
             const validRequests = openRequests.filter((request) => {
@@ -280,7 +283,7 @@ export class cardanoWatcher{
                         return decodedRequest;
                     
                     }catch(e){
-                        console.log("Error Decoding Request", e);
+                        //console.log("Error Decoding Request", e);
                         this.rejectRequest(request.txHash, request.outputIndex);
                     }
                 }
@@ -293,18 +296,22 @@ export class cardanoWatcher{
                     const decodedRequest = request as redemptionRequest; // Cast decodedRequest to the correct type
                     try{    
                         decodedRequest["decodedDatum"] = this.decodeRedemptionDatum(request.datum)
+                        // if no token is being redeemed, reject the request
+                        if(!decodedRequest.assets[this.cBTCPolicy +  this.cBtcHex] ){
+                            this.rejectRequest(request.txHash, request.outputIndex);
+                            return;
+                        }
                         return decodedRequest;
                     
                     }catch(e){
-                        console.log("Error Decoding Request", e);
+                       // console.log("Error Decoding Request", e);
                         this.rejectRequest(request.txHash, request.outputIndex);
                     }
                 }
             });
             //remove undefined values
-            mintRequests.filter((request) => request);
-            redemptionRequests.filter((request) => request);
-            return [ mintRequests , redemptionRequests  ];
+           
+            return [ mintRequests.filter((request) => request) , redemptionRequests.filter((request) => request)  ];
 
 
         }catch(e){
