@@ -1,10 +1,6 @@
 import exp from 'constants'
 import * as Lucid  from 'lucid-cardano'
 
-export type nodeStatus = {  
-    "status" : "leader" | "follower" | "candidate" | "monitor" | "learner"
-} 
-
 
 export  type bitcoinConfig =
 {
@@ -36,6 +32,23 @@ export type topology = {
               },
         ],    
         "m": number
+}
+
+export type pendingCardanoTransaction = {
+    type: "mint" | "burn" | "rejection",
+    txHash: string,
+    index: number,
+    signatures: string[],
+    tx: Lucid.TxComplete
+}
+
+export enum NodeStatus {
+  Learner = 'learner',
+  Follower = 'follower',
+  Candidate = 'candidate',
+  Monitor = 'monitor',
+  Leader = 'leader',
+  Disconnected = 'disconnected'
 }
 
 export type protocolConfig = {

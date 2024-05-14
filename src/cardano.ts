@@ -2,11 +2,12 @@ import { Db } from "mongodb";
 import { toHexString, txId, hash } from "./helpers.js";
 import * as Lucid  from 'lucid-cardano'
 import { CardanoSyncClient , CardanoBlock } from "@utxorpc/sdk";
-import {cardanoConfig, topology, secretsConfig, mintRequest , MintRequestSchema, RedemptionRequestSchema, utxo, redemptionRequest} from "./types.js"
+import {cardanoConfig, topology, secretsConfig, mintRequest , MintRequestSchema, RedemptionRequestSchema, utxo, redemptionRequest, NodeStatus} from "./types.js"
 import {emitter}  from "./coordinator.js";
 import axios from "axios";
 import { getDb } from "./db.js";
 import { emit } from "process";
+import { number } from "bitcoinjs-lib/src/script.js";
 
 const METADATA_TAG = 85471236584;
 
@@ -20,9 +21,22 @@ export class cardanoWatcher{
     private address: string;
     private configUtxo : Lucid.UTxO;
     private config: cardanoConfig;
-    private rejectionQueue: {txHash: string, index: number}[] = [];
+    private rejectionQueue: {txHash: string, index: number , targetAddress : string}[] = [];
 
     constructor(config: cardanoConfig, topology: topology, secrets: secretsConfig ){
+        emitter.on("signatureRequest", async (tx) => {
+            console.log(tx)
+            switch (tx.type) {
+                case "rejection":
+                    this.signReject(tx);
+                    break;
+                default:
+                    console.log("Unknown Signature Request");
+
+            }
+            
+        });
+
         this.mongo = getDb(config.DbName)
         console.log(typeof this.mongo)
         this.mintingScript = {type: "PlutusV2" , script: config.contract};
@@ -31,7 +45,7 @@ export class cardanoWatcher{
         this.config = config;
 
         (async () => {
-           this.lucid = await Lucid.Lucid.new(new Lucid.Blockfrost(config.lucid.provider.host, "previewB9itCoBdnffsAjAyqLCSrGCB2kntLwWC"), (config.network.charAt(0).toUpperCase() + config.network.slice(1)) as Lucid.Network);
+           this.lucid = await Lucid.Lucid.new(new Lucid.Blockfrost(config.lucid.provider.host, "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO"), (config.network.charAt(0).toUpperCase() + config.network.slice(1)) as Lucid.Network);
            this.lucid.selectWalletFromSeed(secrets.seed);
            console.log("Minting Script Address:", this.mintingScript);
            emitter.emit("notification", "Cardano Watcher Ready");
@@ -162,11 +176,42 @@ export class cardanoWatcher{
             }
     }
 
+    decodeTransaction(tx : Lucid.TxComplete){
+        const uint8Array = new Uint8Array(tx.toString().match(/.{2}/g).map(byte => parseInt(byte, 16)));
+        const cTx = Lucid.C.Transaction.from_bytes(uint8Array);
+        const txBody = cTx.body().to_js_value()
+        
+        return [txBody, cTx];
+  
+      }
+
     requestId(request: Lucid.UTxO){
         return request.txHash + request.outputIndex.toString();
     }
 
+    async signReject(tx : {tx: Lucid.TxComplete, txHash: string, index: number}){
+          const [txDetails, cTx ] = this.decodeTransaction(tx.tx);
+          console.log("txDetails",txDetails)
+          // check the rejection queue for the request
+          const requestListing = this.rejectionQueue.find((request) => request.txHash === tx.txHash && request.index === tx.index);
+          if(!requestListing) return;
+          const mintClean = txDetails.mint === null;
+          const inputsClean = (txDetails.inputs.length === 1 && txDetails.inputs[0].transaction_id === tx.txHash && Number(txDetails.inputs[0].index) === tx.index); 
+          const outputsClean = txDetails.outputs.length === 1 && txDetails.outputs[0].address === requestListing.targetAddress ;
+         // const amISigner = txDetails.extra_witnesses.some
+          const withdrawalsClean = txDetails.withdrawals === null;
+          
+          console.log(mintClean, inputsClean, outputsClean, withdrawalsClean , txDetails)
+          if (requestListing && mintClean && inputsClean && outputsClean && withdrawalsClean){
+              const signature =  await this.lucid.wallet.signTx(cTx);
+              console.log("Signature", signature);
+              emitter.emit("signatureResponse", {txHash: tx.txHash, index: tx.index, signature});
+          }else{
+                
 
+          }
+        
+    }
 
     async rejectRequest(txHash: string, index: number){
         console.log("Rejecting Request", txHash, index);
@@ -174,6 +219,7 @@ export class cardanoWatcher{
             console.log("Leader", leader);
             if(leader){
                 try{
+                    emitter.emit("getQuorum", {}, async (quorum) => {
                         
                         const MultisigDescriptorSchema = Lucid.Data.Object({ 
                             list: Lucid.Data.Array(Lucid.Data.Bytes()),
@@ -189,7 +235,11 @@ export class cardanoWatcher{
                         const spendingTx =  this.lucid.newTx().attachSpendingValidator(this.mintingScript).collectFrom([request]).readFrom([this.configUtxo])
                 
                         
-                        const signersTx = this.lucid.newTx().addSigner(await this.lucid.wallet.address()).addSigner("addr_test1qqnv8qt46zedj4c7r24mzf2vw88twdgk728vrkfx6adsa59fw2u2fjmpmc3utlvmky35lya9ctv50m9rzuhuql85qffsas87h9")
+                        const signersTx = this.lucid.newTx()
+
+                        quorum.forEach((signer) => {
+                            signersTx.addSigner(signer);
+                        });
 
                         const referenceInput = this.lucid.newTx().readFrom([this.configUtxo]);
                         
@@ -200,15 +250,17 @@ export class cardanoWatcher{
                                                   .compose(referenceInput);
                 
                 
-                        const completedTx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false});
-                        const signature = await  completedTx.partialSign();
+                        const tx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false});
+                        const signature = await  tx.partialSign();
 
-                        emitter.emit("txToComplete" , {type: "rejection", txHash, index, signature ,completedTx });
+                        emitter.emit("txToComplete" , {type: "rejection", txHash, index, signatures: [signature] , tx });
+                    });
                 }catch(e){
                     console.log(e);
-                }                
+                }       
+                         
             }else{
-                this.rejectionQueue.push({txHash, index});                
+                this.rejectionQueue.push({txHash, index , targetAddress: await this.getUtxoSender(txHash, index)});                
             } 
         });
 
@@ -261,7 +313,7 @@ export class cardanoWatcher{
 
 
     async getTip(){
-        let tip = await axios.get("https://cardano-preview.blockfrost.io/api/v0/blocks/latest", {headers: {"project_id": "previewB9itCoBdnffsAjAyqLCSrGCB2kntLwWC"}});
+        let tip = await axios.get("https://cardano-preview.blockfrost.io/api/v0/blocks/latest", {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO"}});
         return tip;
     }
 
@@ -477,7 +529,7 @@ export class cardanoWatcher{
 
 
     async getUtxoSender(hash : string, index: number){
-        const data = await axios.get("https://cardano-preview.blockfrost.io/api/v0/txs/" + hash + "/utxos", {headers: {"project_id": "previewB9itCoBdnffsAjAyqLCSrGCB2kntLwWC"}});
+        const data = await axios.get("https://cardano-preview.blockfrost.io/api/v0/txs/" + hash + "/utxos", {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO"}});
         return  data.data.inputs[index].address;
     }
 

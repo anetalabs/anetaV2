@@ -1,23 +1,17 @@
 import { emitter } from './coordinator.js';
-import { topology, secretsConfig } from './types';
+import { topology, secretsConfig, pendingCardanoTransaction, NodeStatus } from './types';
 import { Server, Socket as ServerSocket } from 'socket.io';
 import { Socket as ClientSocket } from 'socket.io-client';
 import  Client  from 'socket.io-client';
-import { Lucid } from 'lucid-cardano';
+import * as Lucid  from 'lucid-cardano';
 import crypto from 'crypto';
 import { connect } from 'http2';
+import { txId } from './helpers.js';
 
 const HEARTBEAT = 2000;
 const ELECTION_TIMEOUT = 5;
 
-enum NodeStatus {
-    Learner = 'learner',
-    Follower = 'follower',
-    Candidate = 'candidate',
-    Monitor = 'monitor',
-    Leader = 'leader',
-    Disconnected = 'disconnected'
-}
+
 
 interface vote {
     candidate: number;
@@ -42,11 +36,11 @@ interface angelPeer {
 
 export class Communicator {
     private peers: angelPeer[];
-    private lucid: Lucid;
+    private lucid: Lucid.Lucid;
     private address: string;
     private topology: topology;
     private leaderTimeout: Date;
-    private transactionsBuffer: any[] = [];
+    private transactionsBuffer: pendingCardanoTransaction[] = [];
     private Iam: number;
     constructor(topology: topology, secrets: secretsConfig , port: number) {
         this.heartbeat = this.heartbeat.bind(this);
@@ -66,13 +60,24 @@ export class Communicator {
             callback(quorum);
         });
 
-        emitter.on("txToComplete", (data) => {
-            if(this.peers[this.Iam].state === NodeStatus.Leader){
+        emitter.on("txToComplete", (data : pendingCardanoTransaction) => {
+            if(this.peers[this.Iam].state === NodeStatus.Leader  && !this.transactionsBuffer.find((tx) => tx.txHash === data.txHash && tx.index === data.index) ){
                 this.transactionsBuffer.push(data);
                 console.log('Transaction to complete:', data);
-                
             }
         });
+
+        emitter.on("signatureResponse", (data) => {
+            //send the signature to the leader
+            console.log('Signature response received', data);
+            const leader = this.peers[this.getLeader()];
+            if(leader && leader.outgoingConnection){
+                leader.outgoingConnection.emit('signatureResponse', data);
+            }
+            
+        }   );
+
+        
 
         
 
@@ -80,7 +85,7 @@ export class Communicator {
         this.topology = topology;
         (async () => {
             try {
-                this.lucid = await Lucid.new();
+                this.lucid = await Lucid.Lucid.new();
                 this.lucid.selectWalletFromSeed(secrets.seed);
                 const pubKey =  this.lucid.utils.getAddressDetails(await this.lucid.wallet.address()).paymentCredential.hash;
                 //fing pubkey in topology or throw error
@@ -105,7 +110,7 @@ export class Communicator {
         
         this.leaderTimeout = new Date();
         
-        function initializeNodes(topology: topology, lucid: Lucid, Iam: number ) {
+        function initializeNodes(topology: topology, lucid: Lucid.Lucid, Iam: number ) {
             return topology.topology.map((node, index) => {
                 return {
                     id: node.name,
@@ -188,7 +193,6 @@ export class Communicator {
     }
 
     private vote = async function (candidate: number, peer : angelPeer = null) {
-        console.log('Voting for:', candidate);
         let vote = {
             candidate: candidate,
             time : new Date().getTime(),
@@ -207,10 +211,15 @@ export class Communicator {
         }
     }
 
+
+
     private heartbeat() {
         
+
         if(this.peers[this.Iam].state === NodeStatus.Leader){
             this.broadcast('heartbeat');
+            this.gatherSignatures();
+
         }else{ 
             if( new Date().getTime() - new Date(this.leaderTimeout).getTime() > ELECTION_TIMEOUT * HEARTBEAT){
                 this.election();
@@ -304,8 +313,8 @@ export class Communicator {
         });
 
 
+
         socket.on('statusUpdate', (status) => {
-            console.log('Status update:', status);
             if(status === NodeStatus.Leader){
                 console.log('illigal status update from:', this.peers[index].id, 'to leader, ignoring...');
                // this.applyPunitveMeasures(socket);
@@ -320,7 +329,6 @@ export class Communicator {
                 const verified = this.lucid.verifyMessage(decodedVote.voter ,this.stringToHex(vote.vote), vote.signature);
                 const addressIsPeer = (this.peers.findIndex(peer => peer.address === decodedVote.voter) !== -1);
                 if(verified && addressIsPeer && Math.abs(decodedVote.time - new Date().getTime() ) < HEARTBEAT){
-                    console.log('Valid vode from:', decodedVote.voter, 'for:', decodedVote.candidate);
                     this.peers[index].votedFor = decodedVote.candidate;
                 }else{  
                     console.log('Vote not verified');
@@ -330,9 +338,30 @@ export class Communicator {
                 console.log(err);
             }
         }
-        );
+        );        
 
+        socket.on('signatureRequest', async (data) => {
+            // if not leader, ignore
+            if(this.peers[index].state !== NodeStatus.Leader || this.peers[this.Iam].state !== NodeStatus.Follower) return;
+            emitter.emit('signatureRequest', data);
+            console.log('Signature request received');
+            
+        });
 
+        socket.on('signatureResponse',async (data) => {
+            // if not leader, ignore
+            console.log(this.peers[this.Iam].state)
+            if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
+
+            const pendingTx = this.transactionsBuffer.find((tx) => tx.txHash === data.txHash && tx.index === data.index)
+            console.log(pendingTx, data.signature.toString())
+            pendingTx.signatures.push(data.signature.toString());
+            if(pendingTx.signatures.length >= this.topology.m){
+                const completedTx = await pendingTx.tx.assemble(pendingTx.signatures).complete();
+                completedTx.submit();
+            }
+        });
+        
         socket.on('data', (data) => {
             console.log('Received data:', data.toString() , 'from', socket.handshake.address);
         });
@@ -343,6 +372,19 @@ export class Communicator {
             this.peers[index].incomingConnection = null;
             this.peers[index].state = NodeStatus.Disconnected;
             socket.disconnect();
+        });
+    }
+
+    private gatherSignatures(){
+        //if not leader, ignore
+        if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
+
+        this.peers.forEach((node, index) => {
+            this.transactionsBuffer.forEach((tx) => {
+                if(node.state === NodeStatus.Follower && node.outgoingConnection){
+                    node.outgoingConnection.emit('signatureRequest', {type: "rejection" ,txHash: tx.txHash, index: tx.index , signature: tx.signatures[0], tx: tx.tx.toString()});
+                }
+            });
         });
     }
 
@@ -366,7 +408,6 @@ export class Communicator {
         });
 
         socket.on('connect_error', (error) => {
-            console.log('Connection Error');
             socket.disconnect();
             this.peers[i].outgoingConnection = null;
 
