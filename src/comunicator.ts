@@ -5,6 +5,7 @@ import { Socket as ClientSocket } from 'socket.io-client';
 import  Client  from 'socket.io-client';
 import { Lucid } from 'lucid-cardano';
 import crypto from 'crypto';
+import { connect } from 'http2';
 
 const HEARTBEAT = 2000;
 const ELECTION_TIMEOUT = 5;
@@ -29,6 +30,7 @@ interface angelPeer {
     currentTerm: number;
     votedFor: number | null;
     lastApplied: number;
+    connectionTime : Date;
     ip: string;
     port: number;
     address: string;
@@ -44,9 +46,37 @@ export class Communicator {
     private address: string;
     private topology: topology;
     private leaderTimeout: Date;
+    private transactionsBuffer: any[] = [];
     private Iam: number;
     constructor(topology: topology, secrets: secretsConfig , port: number) {
         this.heartbeat = this.heartbeat.bind(this);
+
+        emitter.on('amILeader', (data,callback) => {
+            callback(this.peers[this.Iam].state === NodeStatus.Leader);
+        });
+
+        emitter.on('getQuorum', (data, callback) => { 
+            // get the n nodes with the oldest connection time
+            const quorum = this.peers
+                .filter((node) => node.state === NodeStatus.Follower)
+                .sort((a, b) => a.connectionTime.getTime() - b.connectionTime.getTime())
+                .slice(0, this.topology.m-1)
+                .map((node) => node.address);
+            quorum.push(this.address);
+            callback(quorum);
+        });
+
+        emitter.on("txToComplete", (data) => {
+            if(this.peers[this.Iam].state === NodeStatus.Leader){
+                this.transactionsBuffer.push(data);
+                console.log('Transaction to complete:', data);
+                
+            }
+        });
+
+        
+
+
         this.topology = topology;
         (async () => {
             try {
@@ -65,7 +95,7 @@ export class Communicator {
                 this.peers = initializeNodes(topology, this.lucid, this.Iam);
                 this.start(port);
 
-
+                 
             } catch (err) {
                 console.error('Error starting lucid:', err);
             }
@@ -82,6 +112,7 @@ export class Communicator {
                     currentTerm: 0,
                     votedFor: null,
                     log: [],
+                    connectionTime: undefined,
                     lastApplied: 0,
                     port: node.port,
                     ip: node.ip,
@@ -115,7 +146,7 @@ export class Communicator {
         }
     }
 
-    election() {
+    private election() {
         if(this.peers[this.Iam].state in [NodeStatus.Leader,NodeStatus.Candidate, NodeStatus.Monitor] ) return;
 
         console.log('Leader timeout, starting election');
@@ -156,7 +187,7 @@ export class Communicator {
         }, HEARTBEAT );
     }
 
-    vote = async function (candidate: number, peer : angelPeer = null) {
+    private vote = async function (candidate: number, peer : angelPeer = null) {
         console.log('Voting for:', candidate);
         let vote = {
             candidate: candidate,
@@ -176,7 +207,7 @@ export class Communicator {
         }
     }
 
-    heartbeat() {
+    private heartbeat() {
         
         if(this.peers[this.Iam].state === NodeStatus.Leader){
             this.broadcast('heartbeat');
@@ -213,7 +244,8 @@ export class Communicator {
                 id: node.id,
                 incomingConnection: node.incomingConnection ? true : false,
                 outgoingConnection: node.outgoingConnection ? true : false,
-                state: node.state
+                state: node.state,
+                connectionTime: node.connectionTime
             };
         });
 
@@ -235,6 +267,7 @@ export class Communicator {
                 const peerindex = this.peers.findIndex(peer => peer.address === response.address);
                 this.applyRuntimeListeners(socket,peerindex);
                 this.peers[peerindex].incomingConnection = socket;
+                this.peers[peerindex].connectionTime = new Date();
                 socket.emit('authenticationAccepted');
                 
             }else{
@@ -278,6 +311,7 @@ export class Communicator {
                // this.applyPunitveMeasures(socket);
             }
             this.peers[index].state = status;
+
         });
 
         socket.on('vote', (vote ) => {   
@@ -369,8 +403,4 @@ export class Communicator {
             }
         });
     }
-
-
-
-
 }

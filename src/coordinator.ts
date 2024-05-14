@@ -71,6 +71,7 @@ export class coordinator{
     async getOpenRequests(){
         let [mintRequests , redemptionRequests] = await this.cardanoWatcher.queryValidRequests();
 
+        
 
         console.log("Mint Requests", mintRequests);
         console.log("Redemption Requests", redemptionRequests);

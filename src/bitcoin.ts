@@ -87,9 +87,7 @@ export class bitcoinWatcher{
             await new Promise((resolve) => setTimeout(resolve, 5000));
         }
         await this.getUtxos();
-        //////////////////////////
-        emitter.emit("newBtcBlock");
-        //////////////////////////
+
         this.startListener()
         this.isSynced = true;
     };
@@ -375,6 +373,7 @@ export class bitcoinWatcher{
         this.utxos.map((address) => console.log(address.utxos))
         console.log("Vault", this.utxos[this.address.length])
         emitter.emit("newBtcBlock");
+        emitter.emit("newUtxos", this.utxos);
         this.gettingUtxos = false;
     } catch (e) {
         console.log(e)

@@ -5,6 +5,8 @@ export default class ApiServer {
   private app: express.Express;
   private networkStatus: string = "unknown"
   private paymentPaths: string = "unknown"
+  private utxos: any[] = []
+  
   // console.log('Node:', node.id, 
   // node.incomingConnection ? true : false, 
   // node.outgoingConnection ? true : false,
@@ -17,6 +19,11 @@ export default class ApiServer {
     emitter.on('paymentPathsUpdate', (status) => {
       this.paymentPaths = status
     })
+
+    emitter.on("newUtxos", (utxos) => {
+      this.utxos = utxos
+    })
+
     
     this.app = express();
     this.app.set('json spaces', 2);
@@ -35,10 +42,28 @@ export default class ApiServer {
       res.json({ paymentPaths: this.paymentPaths });
     });
 
+    this.app.get("/paymentPaths/:index", (req, res) => {
+      res.json({ paymentPaths: this.paymentPaths[req.params.index] });
+    });
+
+    this.app.get('/utxos', (req, res) => {
+      res.json({ utxos: this.utxos });
+    });
+
+    this.app.get('/utxos/:index', (req, res) => {
+      res.json({ utxos: this.utxos[req.params.index] });
+    });
+
+    this.app.get('/vault', (req, res) => {
+      //the last elemet in the array is the vault
+      res.json({ vault: this.utxos[this.utxos.length - 1] });  
+    });
+
     this.app.get('/networkStatus', (req, res) => {
       res.json({ networkStatus: this.networkStatus });
     });
-    
+
+
   }
 
   start(port) {

@@ -6,6 +6,7 @@ import {cardanoConfig, topology, secretsConfig, mintRequest , MintRequestSchema,
 import {emitter}  from "./coordinator.js";
 import axios from "axios";
 import { getDb } from "./db.js";
+import { emit } from "process";
 
 const METADATA_TAG = 85471236584;
 
@@ -17,10 +18,10 @@ export class cardanoWatcher{
     private cBTCPolicy: Lucid.PolicyId;
     private cBtcHex: string;
     private address: string;
-    private mintRequests: any[] = [];
-    private requestsFulfilled: string[] = [];
     private configUtxo : Lucid.UTxO;
     private config: cardanoConfig;
+    private rejectionQueue: {txHash: string, index: number}[] = [];
+
     constructor(config: cardanoConfig, topology: topology, secrets: secretsConfig ){
         this.mongo = getDb(config.DbName)
         console.log(typeof this.mongo)
@@ -156,7 +157,6 @@ export class cardanoWatcher{
             console.log("signature", signatures);
             console.log("completedTx", signedTx.toString());
             await signedTx.submit();    
-            this.requestsFulfilled.push(this.requestId(request));
         }catch(e){
                 console.log(e);
             }
@@ -166,8 +166,53 @@ export class cardanoWatcher{
         return request.txHash + request.outputIndex.toString();
     }
 
+
+
     async rejectRequest(txHash: string, index: number){
         console.log("Rejecting Request", txHash, index);
+        emitter.emit("amILeader", {} , async (leader) => {
+            console.log("Leader", leader);
+            if(leader){
+                try{
+                        
+                        const MultisigDescriptorSchema = Lucid.Data.Object({ 
+                            list: Lucid.Data.Array(Lucid.Data.Bytes()),
+                            m: Lucid.Data.Integer(),
+                            });
+                            
+                            
+                        type MultisigDescriptor = Lucid.Data.Static<typeof MultisigDescriptorSchema>;
+                        const MultisigDescriptor = MultisigDescriptorSchema as unknown as MultisigDescriptor; 
+                        const multisig = Lucid.Data.from(this.configUtxo.datum, MultisigDescriptor);
+                        const openRequests =await this.lucid.provider.getUtxos(this.address);
+                        const request = openRequests.find( (request) => request.txHash === txHash && request.outputIndex === index);
+                        const spendingTx =  this.lucid.newTx().attachSpendingValidator(this.mintingScript).collectFrom([request]).readFrom([this.configUtxo])
+                
+                        
+                        const signersTx = this.lucid.newTx().addSigner(await this.lucid.wallet.address()).addSigner("addr_test1qqnv8qt46zedj4c7r24mzf2vw88twdgk728vrkfx6adsa59fw2u2fjmpmc3utlvmky35lya9ctv50m9rzuhuql85qffsas87h9")
+
+                        const referenceInput = this.lucid.newTx().readFrom([this.configUtxo]);
+                        
+                        const finalTx = this.lucid.newTx()
+                                                  .compose(signersTx)
+                                                  .compose(spendingTx)
+                
+                                                  .compose(referenceInput);
+                
+                
+                        const completedTx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false});
+                        const signature = await  completedTx.partialSign();
+
+                        emitter.emit("txToComplete" , {type: "rejection", txHash, index, signature ,completedTx });
+                }catch(e){
+                    console.log(e);
+                }                
+            }else{
+                this.rejectionQueue.push({txHash, index});                
+            } 
+        });
+
+        
     //     try{
 
     //     const MultisigDescriptorSchema = Lucid.Data.Object({ 
@@ -265,7 +310,6 @@ export class cardanoWatcher{
     async queryValidRequests(): Promise< [mintRequest[], redemptionRequest[]]> {
         try{
             const openRequests = ((await this.lucid.provider.getUtxos(this.address)).filter((request) => request.datum));
-            console.log("Open Requests", openRequests);
 
             const validRequests = openRequests.filter((request) => {
                 return request.datum ;
