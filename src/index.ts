@@ -1,7 +1,7 @@
-import { cardanoWatcher } from "./cardano.js"
-import { bitcoinWatcher } from "./bitcoin.js";
-import { notificationManager } from "./notifications.js";
-import { coordinator } from "./coordinator.js";
+import { CardanoWatcher } from "./cardano.js"
+import { BitcoinWatcher } from "./bitcoin.js";
+import { NotificationManager } from "./notifications.js";
+import { Coordinator } from "./coordinator.js";
 import { Communicator } from "./comunicator.js";
 import ApiServer from "./api.js";
 import { cardanoConfig, bitcoinConfig, notificationConfig, topology, secretsConfig, protocolConfig } from "./types.js";
@@ -12,6 +12,12 @@ import { connect } from './db.js';
 
 // Now your other modules can use the MongoDB connection
 const args  = minimist(process.argv.slice(2));
+
+export let communicator: Communicator;
+export let notification: NotificationManager;
+export let BTCWatcher: BitcoinWatcher;
+export let ADAWatcher: CardanoWatcher;
+export let coordinator: Coordinator;
 
 console.log(args);
 
@@ -32,23 +38,22 @@ async function main() {
 
 
     //////////////////////////////////////////////////////
-    const communicator = new Communicator(topology, secrets, args.port || 3000)
-    const notification = new notificationManager(notificationConfig)
-    const watcher = new bitcoinWatcher(bitcoinConfig, topology, secrets)
-    const ADAWatcher = new cardanoWatcher(cardanoConfig, topology, secrets)
-    const coord = new coordinator(ADAWatcher, watcher, protocolConfig)
+    communicator = new Communicator(topology, secrets, args.port || 3000)
+    notification = new NotificationManager(notificationConfig)
+    BTCWatcher = new BitcoinWatcher(bitcoinConfig, topology, secrets);
+    ADAWatcher = new CardanoWatcher(cardanoConfig,  secrets);
+    coordinator = new Coordinator( protocolConfig);
     
+    // while(!watcher.inSycn()){
+    //     await new Promise((resolve) => setTimeout(resolve, LOOP_INTERVAL));
+    //}
 
-       // while(!watcher.inSycn()){
-       //     await new Promise((resolve) => setTimeout(resolve, LOOP_INTERVAL));
-        //}
-        
-        //console.log(watcher.getUtxosByIndex(1))
-        try{
-          
-        } catch (e) {
-            console.log(e)
-        }
+    //console.log(watcher.getUtxosByIndex(1))
+    try {
+      
+    } catch (e) {
+        console.log(e);
+    }
 }   
 
 main()

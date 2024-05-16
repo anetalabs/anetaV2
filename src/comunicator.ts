@@ -1,12 +1,11 @@
+import { ADAWatcher } from './index.js';
 import { emitter } from './coordinator.js';
-import { topology, secretsConfig, pendingCardanoTransaction, NodeStatus } from './types';
+import { topology, secretsConfig, pendingCardanoTransaction, NodeStatus } from './types.js';
 import { Server, Socket as ServerSocket } from 'socket.io';
 import { Socket as ClientSocket } from 'socket.io-client';
 import  Client  from 'socket.io-client';
 import * as Lucid  from 'lucid-cardano';
 import crypto from 'crypto';
-import { connect } from 'http2';
-import { txId } from './helpers.js';
 
 const HEARTBEAT = 2000;
 const ELECTION_TIMEOUT = 5;
@@ -347,6 +346,7 @@ export class Communicator {
             console.log('Signature request received');
             
         });
+        
 
         socket.on('signatureResponse',async (data) => {
             // if not leader, ignore
@@ -357,8 +357,8 @@ export class Communicator {
             console.log(pendingTx, data.signature.toString())
             pendingTx.signatures.push(data.signature.toString());
             if(pendingTx.signatures.length >= this.topology.m){
-                const completedTx = await pendingTx.tx.assemble(pendingTx.signatures).complete();
-                completedTx.submit();
+                const completedTx = (await pendingTx.tx.assemble(pendingTx.signatures).complete())
+                ADAWatcher.submitTransaction(completedTx);
             }
         });
         
@@ -387,6 +387,7 @@ export class Communicator {
             });
         });
     }
+
 
     private applyPunitveMeasures(peer: angelPeer) {
         console.log('Applying punitive measures');

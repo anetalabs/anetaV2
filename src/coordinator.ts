@@ -1,12 +1,10 @@
-import { cardanoWatcher } from "./cardano.js"
-import { bitcoinWatcher } from "./bitcoin.js";
+import { BTCWatcher  , ADAWatcher } from "./index.js";
 import EventEmitter from "events";
 import { requestId } from "./helpers.js";
 export const emitter = new EventEmitter();
 import { redemptionRequest, mintRequest,  utxo , protocolConfig, MintRequestSchema} from "./types.js";
 import { getDb } from "./db.js";
 import { Collection } from "mongodb";
-import { emit } from "process";
 
 enum state {
     open,
@@ -40,25 +38,22 @@ interface paymentPaths{
     fulfillment?: string | null
 } 
 
-export class coordinator{
-    cardanoWatcher: cardanoWatcher
-    bitcoinWatcher: bitcoinWatcher
+export class Coordinator{
+
     paymentPaths: paymentPaths[]
     config: protocolConfig
     redemptionState: redemptionController
     redemptionDb: Collection<redemptionController>
 
-    constructor(cardanoWatcher : cardanoWatcher, bitcoinWatcher : bitcoinWatcher, protocol: protocolConfig){
-        this.cardanoWatcher = cardanoWatcher;
-        this.bitcoinWatcher = bitcoinWatcher;
+    constructor( protocol: protocolConfig){
         this.config  = protocol
-        this.redemptionDb = getDb(cardanoWatcher.getDbName()).collection("redemptionState");
+        this.redemptionDb = getDb(ADAWatcher.getDbName()).collection("redemptionState");
 
         (async () => {
             this.redemptionState = await this.redemptionDb.findOne({}) || {state: redemptionState.open};
         })();
         
-        this.paymentPaths = Array.from({length: this.bitcoinWatcher.getPaymentPaths()}, (_, index) => index).map((index) => {return {state: state.open, index: index , address: this.bitcoinWatcher.getAddress(index)}});
+        this.paymentPaths = Array.from({length: BTCWatcher.getPaymentPaths()}, (_, index) => index).map((index) => {return {state: state.open, index: index , address: BTCWatcher.getAddress(index)}});
         this.getOpenRequests = this.getOpenRequests.bind(this);
         this.onNewCardanoBlock = this.onNewCardanoBlock.bind(this); 
        
@@ -69,7 +64,7 @@ export class coordinator{
 
     
     async getOpenRequests(){
-        let [mintRequests , redemptionRequests] = await this.cardanoWatcher.queryValidRequests();
+        let [mintRequests , redemptionRequests] = await ADAWatcher.queryValidRequests();
 
         
 
@@ -83,7 +78,7 @@ export class coordinator{
                 this.paymentPaths[index].request = request;
             }else if (!this.paymentPaths[index].request || requestId(this.paymentPaths[index].request) !==  requestId(request)){
                 console.log("Payment Pathway already in use, rejecting request");
-                this.cardanoWatcher.rejectRequest(request.txHash, request.outputIndex);
+                ADAWatcher.rejectRequest(request.txHash, request.outputIndex);
             }
         });
 
@@ -92,10 +87,10 @@ export class coordinator{
         if(  redemptionRequests.length  > 0 && this.redemptionState.state === redemptionState.open){
             try{
                 
-                this.redemptionState.currentTransaction = await this.bitcoinWatcher.craftRedemptionTransaction(redemptionRequests);
+                this.redemptionState.currentTransaction = await BTCWatcher.craftRedemptionTransaction(redemptionRequests);
                 this.redemptionState.state = redemptionState.forged;
                 this.redemptionState.requestsFilling = redemptionRequests;
-                this.redemptionState.burningTransaction = await this.cardanoWatcher.burn(redemptionRequests, this.redemptionState.currentTransaction);
+                this.redemptionState.burningTransaction = await ADAWatcher.burn(redemptionRequests, this.redemptionState.currentTransaction);
                 // store the transaction in the database
                 this.redemptionDb.findOneAndUpdate({}, {$set: this.redemptionState}, {upsert: true});
 
@@ -122,14 +117,14 @@ export class coordinator{
 
     async checkBurn(){
         if(this.redemptionState.state === redemptionState.forged ){
-            if(await this.cardanoWatcher.isBurnConfirmed(this.redemptionState.burningTransaction)){
+            if(await ADAWatcher.isBurnConfirmed(this.redemptionState.burningTransaction)){
                 this.redemptionState.state = redemptionState.burned;
                 this.redemptionDb.findOneAndUpdate({}, {$set: this.redemptionState}, {upsert: true});
             }   
         }
 
         if(this.redemptionState.state === redemptionState.burned){
-            this.redemptionState.redemptionTx = await this.bitcoinWatcher.completeRedemption(this.redemptionState.currentTransaction);
+            this.redemptionState.redemptionTx = await BTCWatcher.completeRedemption(this.redemptionState.currentTransaction);
             this.redemptionDb.findOneAndUpdate({}, {$set: this.redemptionState}, {upsert: true});
 
         }
@@ -138,24 +133,24 @@ export class coordinator{
     async checkPayments(){
  
         this.paymentPaths.forEach((path, index) => {
-            let payment = this.bitcoinWatcher.getUtxosByIndex(index);
+            let payment = BTCWatcher.getUtxosByIndex(index);
             if(path.state <= state.completed && payment.length > 0){
 
                 payment.forEach(async (utxo) => {
-                    if(await this.cardanoWatcher.paymentProcessed(utxo)){
+                    if(await ADAWatcher.paymentProcessed(utxo)){
                         path.state = state.completed;
                     }
                 });
             }
 
             if(path.state === state.finished && payment.length  === 0){
-                path = {state: state.open, index: index , address: this.bitcoinWatcher.getAddress(index)};
+                path = {state: state.open, index: index , address: BTCWatcher.getAddress(index)};
             }
 
 
             if (path.state === state.commited && payment.length > 0){
-                let sum = this.bitcoinWatcher.btcToSat(payment.reduce((acc, utxo) => acc + utxo.amount, 0));
-                const fee = this.bitcoinWatcher.btcToSat(this.config.fixedFee) 
+                let sum = BTCWatcher.btcToSat(payment.reduce((acc, utxo) => acc + utxo.amount, 0));
+                const fee = BTCWatcher.btcToSat(this.config.fixedFee) 
                 + this.config.margin * Number(path.request.decodedDatum.amount)
                 + this.config.utxoCharge * (payment.length -1);
                 
@@ -170,7 +165,7 @@ export class coordinator{
                     console.log("Payment found");
                     path.state = state.payed;
                     path.payment = payment;
-                    this.cardanoWatcher.fulfillRequest(path.request.txHash, path.request.outputIndex, payment);
+                    ADAWatcher.fulfillRequest(path.request.txHash, path.request.outputIndex, payment);
                 }
             }
             
@@ -182,7 +177,7 @@ export class coordinator{
 
     async checkRedemption(){
         if(this.redemptionState.state === redemptionState.burned){
-            if(await this.bitcoinWatcher.isRedemptionConfirmed(this.redemptionState.redemptionTx)){
+            if(await BTCWatcher.isRedemptionConfirmed(this.redemptionState.redemptionTx)){
                 this.redemptionState.state = redemptionState.completed;
                 this.redemptionDb.findOneAndUpdate({}, {$set: this.redemptionState}, {upsert: true});
             }
@@ -194,12 +189,12 @@ export class coordinator{
         // if more than half of the payment paths are completed, consolidate the payments
         let completed = this.paymentPaths.filter((path) => path.state === state.completed).map((path) => path.index);
         
-        const threholdFilled = completed.length > this.bitcoinWatcher.getPaymentPaths()*this.config.consolidationThreshold;
-        const currentHeight = await this.bitcoinWatcher.getHeight();
+        const threholdFilled = completed.length > BTCWatcher.getPaymentPaths()*this.config.consolidationThreshold;
+        const currentHeight = await BTCWatcher.getHeight();
         let maxWait = 0;
     
         completed.forEach((index) => {  
-            this.bitcoinWatcher.getUtxosByIndex(index).forEach((utxo) => {
+            BTCWatcher.getUtxosByIndex(index).forEach((utxo) => {
                 if(maxWait < currentHeight - utxo.height){
                     maxWait = currentHeight - utxo.height;
                 }
@@ -210,7 +205,7 @@ export class coordinator{
 
         if(threholdFilled || timeToConsolidate){
             console.log("Consolidating payments");
-            await this.bitcoinWatcher.consolidatePayments(completed);
+            await BTCWatcher.consolidatePayments(completed);
             completed.forEach((index) => {
                 this.paymentPaths[index].state = state.finished;
             });

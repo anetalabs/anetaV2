@@ -8,7 +8,7 @@ import { notificationConfig } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-export class notificationManager {
+export class NotificationManager {
 
     constructor(settings : notificationConfig) {
         const dir = settings.directory;

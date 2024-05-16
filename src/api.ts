@@ -6,7 +6,7 @@ export default class ApiServer {
   private networkStatus: string = "unknown"
   private paymentPaths: string = "unknown"
   private utxos: any[] = []
-  
+  private requests: any[] = []
   // console.log('Node:', node.id, 
   // node.incomingConnection ? true : false, 
   // node.outgoingConnection ? true : false,
@@ -24,6 +24,9 @@ export default class ApiServer {
       this.utxos = utxos
     })
 
+    emitter.on("requestsUpdate", (requests) => {
+      this.requests = requests
+    })
     
     this.app = express();
     this.app.set('json spaces', 2);
@@ -63,7 +66,9 @@ export default class ApiServer {
       res.json({ networkStatus: this.networkStatus });
     });
 
-
+    this.app.get('/requests', (req, res) => {
+      res.json({ requests: this.requests });
+    });
   }
 
   start(port) {
