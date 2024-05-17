@@ -36,6 +36,7 @@ export type topology = {
 
 export type pendingCardanoTransaction = {
     type: "mint" | "burn" | "rejection",
+    status: "pending" | "completed" ,
     txHash: string,
     index: number,
     signatures: string[],

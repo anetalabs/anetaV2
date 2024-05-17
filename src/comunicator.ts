@@ -6,6 +6,7 @@ import { Socket as ClientSocket } from 'socket.io-client';
 import  Client  from 'socket.io-client';
 import * as Lucid  from 'lucid-cardano';
 import crypto from 'crypto';
+import { CardanoWatcher } from './cardano.js';
 
 const HEARTBEAT = 2000;
 const ELECTION_TIMEOUT = 5;
@@ -27,6 +28,7 @@ interface angelPeer {
     ip: string;
     port: number;
     address: string;
+    keyHash:  string;
     outgoingConnection: ClientSocket | null;
     incomingConnection: ServerSocket | null;
     state: NodeStatus;
@@ -61,7 +63,9 @@ export class Communicator {
 
         emitter.on("txToComplete", (data : pendingCardanoTransaction) => {
             if(this.peers[this.Iam].state === NodeStatus.Leader  && !this.transactionsBuffer.find((tx) => tx.txHash === data.txHash && tx.index === data.index) ){
-                this.transactionsBuffer.push(data);
+                 const tx = data
+                 tx.status = "pending"
+                this.transactionsBuffer.push(tx);
                 console.log('Transaction to complete:', data);
             }
         });
@@ -121,6 +125,7 @@ export class Communicator {
                     port: node.port,
                     ip: node.ip,
                     address: lucid.utils.credentialToAddress({type: "Key", hash: node.AdaPkHash}) ,
+                    keyHash: node.AdaPkHash, 
                     outgoingConnection: null,
                     incomingConnection: null,
                     state: index === Iam ? NodeStatus.Learner : NodeStatus.Disconnected
@@ -346,7 +351,7 @@ export class Communicator {
             console.log('Signature request received');
             
         });
-        
+
 
         socket.on('signatureResponse',async (data) => {
             // if not leader, ignore
@@ -359,6 +364,7 @@ export class Communicator {
             if(pendingTx.signatures.length >= this.topology.m){
                 const completedTx = (await pendingTx.tx.assemble(pendingTx.signatures).complete())
                 ADAWatcher.submitTransaction(completedTx);
+                pendingTx.status = "completed";
             }
         });
         
@@ -381,7 +387,9 @@ export class Communicator {
 
         this.peers.forEach((node, index) => {
             this.transactionsBuffer.forEach((tx) => {
-                if(node.state === NodeStatus.Follower && node.outgoingConnection){
+                const [decodedTx , _ ] = ADAWatcher.decodeTransaction(tx.tx)
+
+                if(node.state === NodeStatus.Follower && node.outgoingConnection && decodedTx.required_signers.some((signature : string) => signature === node.keyHash) && tx.status === "pending"){
                     node.outgoingConnection.emit('signatureRequest', {type: "rejection" ,txHash: tx.txHash, index: tx.index , signature: tx.signatures[0], tx: tx.tx.toString()});
                 }
             });

@@ -6,7 +6,6 @@ import {cardanoConfig, topology, secretsConfig, mintRequest , MintRequestSchema,
 import {emitter}  from "./coordinator.js";
 import axios from "axios";
 import { getDb } from "./db.js";
-import { emit } from "process";
 
 const METADATA_TAG = 85471236584;
 
@@ -18,9 +17,10 @@ export class CardanoWatcher{
     private cBTCPolicy: Lucid.PolicyId;
     private cBtcHex: string;
     private address: string;
+    private myKeyHash: string;
     private configUtxo : Lucid.UTxO;
     private config: cardanoConfig;
-    private rejectionQueue: {txHash: string, index: number , targetAddress : string}[] = [];
+    private rejectionQueue: {txHash: string, index: number , targetAddress : string , completed: Date | undefined }[] = [];
 
     constructor(config: cardanoConfig, secrets: secretsConfig ){
         emitter.on("signatureRequest", async (tx) => {
@@ -53,8 +53,10 @@ export class CardanoWatcher{
            this.cBtcHex = "63425443";
            this.configUtxo =await this.lucid.provider.getUtxoByUnit("a653490ca18233f06e7f69f4048f31ade4e3885750beae0170d7c8ae634e65746142726964676541646d696e");
            this.address =  this.lucid.utils.credentialToAddress({type: "Script", hash: this.cBTCPolicy});
+           this.myKeyHash = this.lucid.utils.getAddressDetails(await this.lucid.wallet.address()).paymentCredential.hash;
            console.log("Address", this.address);
            console.log("Local Address", await this.lucid.wallet.address());    
+
             await this.dumpHistory();
             console.timeEnd("dumpHistory");
             this.startIndexer();
@@ -71,7 +73,11 @@ export class CardanoWatcher{
     async submitTransaction(tx: Lucid.TxSigned){
         //this.lucid.provider.submitTx(tx.toString());
         console.log(tx.toString());
-        await axios.post("https://cardano-preview.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toString(), 'hex'), {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO", "Content-Type": "application/cbor"}})   
+        try{
+            await axios.post("https://cardano-preview.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toString(), 'hex'), {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO", "Content-Type": "application/cbor"}})   
+        }catch(e){
+            emitter.emit("submitionError", e);
+        }
     }
 
     async burn(requests: redemptionRequest[], redemptionTx: string){
@@ -82,7 +88,6 @@ export class CardanoWatcher{
                 list: Lucid.Data.Array(Lucid.Data.Bytes()),
                 m: Lucid.Data.Integer(),
                 });
-                
                 
             const metadata = await hash(redemptionTx);
 
@@ -200,17 +205,21 @@ export class CardanoWatcher{
           // check the rejection queue for the request
           const requestListing = this.rejectionQueue.find((request) => request.txHash === tx.txHash && request.index === tx.index);
           if(!requestListing) return;
+          const amIaSigner = txDetails.required_signers.some(async (signature : string) => signature === this.myKeyHash);
+          if(!amIaSigner) return;
           const mintClean = txDetails.mint === null;
           const inputsClean = (txDetails.inputs.length === 1 && txDetails.inputs[0].transaction_id === tx.txHash && Number(txDetails.inputs[0].index) === tx.index); 
           const outputsClean = txDetails.outputs.length === 1 && txDetails.outputs[0].address === requestListing.targetAddress ;
-          console.log("Tsabrrrrrrrrrrrrrrrr########################################", txDetails.extra_witnesses)
           const withdrawalsClean = txDetails.withdrawals === null;
           
-          console.log(mintClean, inputsClean, outputsClean, withdrawalsClean , txDetails)
+          console.log(mintClean, inputsClean, outputsClean, withdrawalsClean , txDetails, !requestListing.completed)
           if (requestListing && mintClean && inputsClean && outputsClean && withdrawalsClean){
               const signature =  (await this.lucid.wallet.signTx(cTx)).to_bytes().reduce((str, byte) => str + byte.toString(16).padStart(2, '0'), '');
               console.log("Signature", signature);
               emitter.emit("signatureResponse", {txHash: tx.txHash, index: tx.index, signature});
+              //update the rejection queue to reflect that the request has been signed
+              requestListing.completed = new Date();
+
           }else{
                 
 
@@ -272,53 +281,9 @@ export class CardanoWatcher{
                 }       
                          
             }else{
-                this.rejectionQueue.push({txHash, index , targetAddress: await this.getUtxoSender(txHash, index)});                
+                this.rejectionQueue.push({txHash, index , targetAddress: await this.getUtxoSender(txHash, index), completed : undefined} );                
             } 
         });
-
-        
-    //     try{
-
-    //     const MultisigDescriptorSchema = Lucid.Data.Object({ 
-    //         list: Lucid.Data.Array(Lucid.Data.Bytes()),
-    //         m: Lucid.Data.Integer(),
-    //         });
-            
-            
-    //     type MultisigDescriptor = Lucid.Data.Static<typeof MultisigDescriptorSchema>;
-    //     const MultisigDescriptor = MultisigDescriptorSchema as unknown as MultisigDescriptor; 
-    //     console.log("Config UTxO",this.configUtxo)
-    //     const multisig = Lucid.Data.from(this.configUtxo.datum, MultisigDescriptor);
-    //     console.log(multisig);
-    //     const openRequests =await this.lucid.provider.getUtxos(this.address);
-    //     const request = openRequests.find( (request) => request.txHash === txHash && request.outputIndex === index);
-    //     console.log(request)
-        
-    //     const spendingTx =  this.lucid.newTx().attachSpendingValidator(this.mintingScript).collectFrom([request], Lucid.Data.void()).readFrom([this.configUtxo])
-
-        
-    //     const signersTx = this.lucid.newTx().addSigner(await this.lucid.wallet.address())
-    //     const referenceInput = this.lucid.newTx().readFrom([this.configUtxo]);
-        
-    //     const outputTx = this.lucid.newTx().payToAddress(await this.getUtxoSender(txHash, index), { "lovelace": 1000000n});
-    //     const finalTx = this.lucid.newTx()
-    //                               .compose(signersTx)
-    //                               .compose(spendingTx)
-    //                            //   .compose(outputTx)
-
-    //                               .compose(referenceInput);
-
-
-    //     const completedTx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false});
-    //     const signatures = await  completedTx.partialSign();
-    //     const signedTx = await completedTx.assemble([signatures]).complete();
-    //     console.log("signature", signatures);
-    //     console.log("completedTx", signedTx.toString());
-    //     await signedTx.submit();    
-    //     this.requestsFulfilled.push(this.requestId(request));
-    // }catch(e){
-    //         console.log(e);
-    //     }
 
     }
      
@@ -371,10 +336,20 @@ export class CardanoWatcher{
 
     }
 
+    removeConsumedRequests( requests: Lucid.UTxO[]){
+        this.rejectionQueue.forEach((request) => {
+            const index = requests.findIndex((utxo) => utxo.txHash === request.txHash && utxo.outputIndex === request.index);
+            if(index === -1){
+                this.rejectionQueue = this.rejectionQueue.filter((req) => req.txHash !== request.txHash && req.index !== request.index);
+            }
+        });
+    
+    }
     async queryValidRequests(): Promise< [mintRequest[], redemptionRequest[]]> {
         try{
             const openRequests = ((await this.lucid.provider.getUtxos(this.address)).filter((request) => request.datum));
 
+            this.removeConsumedRequests(openRequests);
 
             emitter.emit("requestsUpdate", openRequests);
             
@@ -414,8 +389,7 @@ export class CardanoWatcher{
                     }
                 }
             });
-            //remove undefined values
-           
+
             return [ mintRequests.filter((request) => request) , redemptionRequests.filter((request) => request)  ];
 
 
