@@ -6,7 +6,7 @@ import {cardanoConfig, topology, secretsConfig, mintRequest , MintRequestSchema,
 import {emitter}  from "./coordinator.js";
 import axios from "axios";
 import { getDb } from "./db.js";
-
+import { communicator } from "./index.js";
 const METADATA_TAG = 85471236584;
 
 export class CardanoWatcher{
@@ -231,65 +231,62 @@ export class CardanoWatcher{
 
     async rejectRequest(txHash: string, index: number){
         console.log("Rejecting Request", txHash, index);
-        emitter.emit("amILeader", {} , async (leader) => {
-            console.log("Leader", leader);
-            if(leader){
-                try{
-                    emitter.emit("getQuorum", {}, async (quorum : string[] ) => {
-                        
-                        const MultisigDescriptorSchema = Lucid.Data.Object({ 
-                            list: Lucid.Data.Array(Lucid.Data.Bytes()),
-                            m: Lucid.Data.Integer(),
-                            });
-                            
-                            
-                        type MultisigDescriptor = Lucid.Data.Static<typeof MultisigDescriptorSchema>;
-                        const MultisigDescriptor = MultisigDescriptorSchema as unknown as MultisigDescriptor; 
-                        const multisig = Lucid.Data.from(this.configUtxo.datum, MultisigDescriptor);
-                        console.log(multisig);
-                        const openRequests =await this.lucid.provider.getUtxos(this.address);
-                        const request = openRequests.find( (request) => request.txHash === txHash && request.outputIndex === index);
-                        console.log(request, this.mintingScript)
-                        const spendingTx =  this.lucid.newTx().attachSpendingValidator(this.mintingScript).collectFrom([request], Lucid.Data.void() ).readFrom([this.configUtxo])
-                
-                        
-                        const signersTx = this.lucid.newTx()
-
-                        quorum.forEach((signer) => {
-                            signersTx.addSigner(signer);
+        if(communicator.amILeader()){
+            try{
+                    const quorum = communicator.getQuorum();
+                    const MultisigDescriptorSchema = Lucid.Data.Object({ 
+                        list: Lucid.Data.Array(Lucid.Data.Bytes()),
+                        m: Lucid.Data.Integer(),
                         });
-
-
-                        const referenceInput = this.lucid.newTx().readFrom([this.configUtxo]);
                         
-                        const finalTx = this.lucid.newTx()
-                                                  .compose(signersTx)
-                                                  .compose(spendingTx)
-                
-                                                  .compose(referenceInput);
-                
-                        try{
-                           const tx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false});
-                           const signature = await  tx.partialSign();
-                           emitter.emit("txToComplete" , {type: "rejection", txHash, index, signatures: [signature] , tx });
-                        }catch(e){
-                            console.log("transaction building error:", e);
-                        }
+                        
+                    type MultisigDescriptor = Lucid.Data.Static<typeof MultisigDescriptorSchema>;
+                    const MultisigDescriptor = MultisigDescriptorSchema as unknown as MultisigDescriptor; 
+                    const multisig = Lucid.Data.from(this.configUtxo.datum, MultisigDescriptor);
+                    console.log(multisig);
+                    const openRequests =await this.lucid.provider.getUtxos(this.address);
+                    const request = openRequests.find( (request) => request.txHash === txHash && request.outputIndex === index);
+                    console.log(request, this.mintingScript)
+                    const spendingTx =  this.lucid.newTx().attachSpendingValidator(this.mintingScript).collectFrom([request], Lucid.Data.void() ).readFrom([this.configUtxo])
+            
+                    
+                    const signersTx = this.lucid.newTx()
+
+                    quorum.forEach((signer) => {
+                        signersTx.addSigner(signer);
                     });
-                }catch(e){
-                    console.log(e);
-                }       
-                         
-            }else{
-                this.rejectionQueue.push({txHash, index , targetAddress: await this.getUtxoSender(txHash, index), completed : undefined} );                
-            } 
-        });
+
+
+                    const referenceInput = this.lucid.newTx().readFrom([this.configUtxo]);
+                    
+                    const finalTx = this.lucid.newTx()
+                                                .compose(signersTx)
+                                                .compose(spendingTx)
+            
+                                                .compose(referenceInput);
+            
+                    try{
+                        const tx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false});
+                        const signature = await  tx.partialSign();
+                        emitter.emit("txToComplete" , {type: "rejection", txHash, index, signatures: [signature] , tx });
+                    }catch(e){
+                        console.log("transaction building error:", e);
+                    }
+            }catch(e){
+                console.log(e);
+            }       
+                        
+        }else{
+            this.rejectionQueue.push({txHash, index , targetAddress: await this.getUtxoSender(txHash, index), completed : undefined} );                
+        } 
 
     }
      
 
 
     async getTip(){
+        
+       // const rcpClient = new LedgerStateService({ uri : this.config.utxoRpc.host,  headers: {"dmtr-api-key": this.config.utxoRpc.key}} );
         let tip = await axios.get("https://cardano-preview.blockfrost.io/api/v0/blocks/latest", {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO"}});
         return tip;
     }
@@ -309,7 +306,7 @@ export class CardanoWatcher{
 
 
         console.log("Starting from tip", tipPoint);
-        const rcpClient = new CardanoSyncClient({ uri : "https://preview.utxorpc-v0.demeter.run",  headers: {"dmtr-api-key": "dmtr_utxorpc1rutw90zm5ucx4lg9tj56nymnq5j98zlf"}} );
+        const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers: {"dmtr-api-key": this.config.utxoRpc.key}} );
         let chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize});
         while(chunk.nextToken ){
             console.time("Chunk")

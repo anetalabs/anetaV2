@@ -46,20 +46,7 @@ export class Communicator {
     constructor(topology: topology, secrets: secretsConfig , port: number) {
         this.heartbeat = this.heartbeat.bind(this);
 
-        emitter.on('amILeader', (data,callback) => {
-            callback(this.peers[this.Iam].state === NodeStatus.Leader);
-        });
 
-        emitter.on('getQuorum', (data, callback) => { 
-            // get the n nodes with the oldest connection time
-            const quorum = this.peers
-                .filter((node) => node.state === NodeStatus.Follower)
-                .sort((a, b) => a.connectionTime.getTime() - b.connectionTime.getTime())
-                .slice(0, this.topology.m-1)
-                .map((node) => node.address);
-            quorum.push(this.address);
-            callback(quorum);
-        });
 
         emitter.on("txToComplete", (data : pendingCardanoTransaction) => {
             if(this.peers[this.Iam].state === NodeStatus.Leader  && !this.transactionsBuffer.find((tx) => tx.txHash === data.txHash && tx.index === data.index) ){
@@ -215,9 +202,22 @@ export class Communicator {
         }
     }
 
+    getQuorum() : string[]{
+     // get the n nodes with the oldest connection time
+        const quorum = this.peers
+            .filter((node) => node.state === NodeStatus.Follower)
+            .sort((a, b) => a.connectionTime.getTime() - b.connectionTime.getTime())
+            .slice(0, this.topology.m-1)
+            .map((node) => node.address);
+        quorum.push(this.address);
+        return(quorum);
+    }
 
+    amILeader() : boolean {
+        return this.peers[this.Iam].state === NodeStatus.Leader;
+    }
 
-    private heartbeat() {
+    private heartbeat() : void {
         
 
         if(this.peers[this.Iam].state === NodeStatus.Leader){
@@ -265,11 +265,11 @@ export class Communicator {
         emitter.emit('networkingStatus', {peers: peerStatus, leaderTimeout : new Date(this.leaderTimeout).getTime() - new Date().getTime() });
     }
 
-    private stringToHex(str: string) {
+    private stringToHex(str: string) : string {
         return Buffer.from(str).toString('hex');
     }
 
-    private async handShake(socket: ServerSocket) {
+    private handShake(socket: ServerSocket) : void{
          const challenge = "challenge" + crypto.randomBytes(32).toString('hex');
          console.log("Starting handshake")
          socket.emit('challenge', challenge);
@@ -355,11 +355,9 @@ export class Communicator {
 
         socket.on('signatureResponse',async (data) => {
             // if not leader, ignore
-            console.log(this.peers[this.Iam].state)
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
 
             const pendingTx = this.transactionsBuffer.find((tx) => tx.txHash === data.txHash && tx.index === data.index)
-            console.log(pendingTx, data.signature.toString())
             pendingTx.signatures.push(data.signature.toString());
             if(pendingTx.signatures.length >= this.topology.m){
                 const completedTx = (await pendingTx.tx.assemble(pendingTx.signatures).complete())
