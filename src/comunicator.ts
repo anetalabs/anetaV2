@@ -1,4 +1,4 @@
-import { ADAWatcher } from './index.js';
+import { ADAWatcher, BTCWatcher } from './index.js';
 import { emitter } from './coordinator.js';
 import { topology, secretsConfig, pendingCardanoTransaction, NodeStatus } from './types.js';
 import { Server, Socket as ServerSocket } from 'socket.io';
@@ -88,7 +88,14 @@ export class Communicator {
                 this.Iam = found;
                 this.address = this.lucid.utils.credentialToAddress({type: "Key", hash: pubKey});
                 this.peers = initializeNodes(topology, this.lucid, this.Iam);
+                //while not synced delay 
+  
+                while(!ADAWatcher.inSync()){
+                    await new Promise((resolve) => setTimeout(resolve, 5000));
+                }
                 this.start(port);
+                setInterval(this.heartbeat, HEARTBEAT);
+                this.leaderTimeout = new Date();
 
                  
             } catch (err) {
@@ -96,9 +103,7 @@ export class Communicator {
             }
         })();
 
-        setInterval(this.heartbeat, HEARTBEAT);
         
-        this.leaderTimeout = new Date();
         
         function initializeNodes(topology: topology, lucid: Lucid.Lucid, Iam: number ) {
             return topology.topology.map((node, index) => {
