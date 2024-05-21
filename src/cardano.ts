@@ -20,7 +20,7 @@ export class CardanoWatcher{
     private myKeyHash: string;
     private configUtxo : Lucid.UTxO;
     private config: cardanoConfig;
-    private rejectionQueue: {txHash: string, index: number , targetAddress : string , completed: Date | undefined }[] = [];
+    private rejectionQueue: {txHash: string, index: number , targetAddress : string , completed: Date | undefined , created: Date}[] = [];
 
     constructor(config: cardanoConfig, secrets: secretsConfig ){
         emitter.on("signatureRequest", async (tx) => {
@@ -277,7 +277,7 @@ export class CardanoWatcher{
             }       
                         
         }else{
-            this.rejectionQueue.push({txHash, index , targetAddress: await this.getUtxoSender(txHash, index), completed : undefined} );                
+            this.rejectionQueue.push({txHash, index , targetAddress: await this.getUtxoSender(txHash, index), completed : undefined, created: new Date()} );                
         } 
 
     }
@@ -295,6 +295,7 @@ export class CardanoWatcher{
     inSync(){
         return !this.syncing;
     }
+
 
     async dumpHistory(){
         const chunkSize = 100; 
