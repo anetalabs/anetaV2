@@ -352,7 +352,19 @@ export class Communicator {
         socket.on('signatureRequest', async (data) => {
             // if not leader, ignore
             if(this.peers[index].state !== NodeStatus.Leader || this.peers[this.Iam].state !== NodeStatus.Follower) return;
-            emitter.emit('signatureRequest', data);
+          
+                switch (data.type) {
+                    case "rejection":
+                        ADAWatcher.signReject(data);
+                        break;
+                    case "mint":
+                        ADAWatcher.signMint(data);
+                        break;
+                
+                    default:
+                        console.log("Unknown Signature Request");
+                }    
+        
             console.log('Signature request received');
             
         });
@@ -393,7 +405,7 @@ export class Communicator {
                 const [decodedTx , _ ] = ADAWatcher.decodeTransaction(tx.tx)
 
                 if(node.state === NodeStatus.Follower && node.outgoingConnection && decodedTx.required_signers.some((signature : string) => signature === node.keyHash) && tx.status === "pending"){
-                    node.outgoingConnection.emit('signatureRequest', {type: "rejection" ,txHash: tx.txHash, index: tx.index , signature: tx.signatures[0], tx: tx.tx.toString()});
+                    node.outgoingConnection.emit('signatureRequest', {type: tx.type ,txHash: tx.txHash, index: tx.index , signature: tx.signatures[0], tx: tx.tx.toString()});
                 }
             });
         });

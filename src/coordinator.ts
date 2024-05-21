@@ -82,6 +82,7 @@ export class Coordinator{
             }
         });
 
+        
         console.log("redeption state", this.redemptionState);  
 
         if(  redemptionRequests.length  > 0 && this.redemptionState.state === redemptionState.open){
@@ -165,7 +166,7 @@ export class Coordinator{
                     console.log("Payment found");
                     path.state = state.payed;
                     path.payment = payment;
-                    ADAWatcher.fulfillRequest(path.request.txHash, path.request.outputIndex, payment);
+                    ADAWatcher.completeMint(path.request.txHash, path.request.outputIndex, payment);
                 }
             }
             

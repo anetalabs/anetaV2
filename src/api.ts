@@ -30,7 +30,15 @@ export default class ApiServer {
     
     this.app = express();
     this.app.set('json spaces', 2);
-
+    this.app.set('json replacer', function(key, value) {
+      if (typeof value === 'bigint') {
+        // Convert BigInt to string
+        return value.toString();
+      } else {
+        // Return value as is
+        return value;
+      }
+    });
     this.app.get('/', (req, res) => {
       res.send('Hello World!');
     });
@@ -57,6 +65,7 @@ export default class ApiServer {
       res.json({ utxos: this.utxos[req.params.index] });
     });
 
+    
     this.app.get('/vault', (req, res) => {
       //the last elemet in the array is the vault
       res.json({ vault: this.utxos[this.utxos.length - 1] });  
