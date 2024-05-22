@@ -6,7 +6,6 @@ import { Socket as ClientSocket } from 'socket.io-client';
 import  Client  from 'socket.io-client';
 import * as Lucid  from 'lucid-cardano';
 import crypto from 'crypto';
-import { CardanoWatcher } from './cardano.js';
 
 const HEARTBEAT = 2000;
 const ELECTION_TIMEOUT = 5;
@@ -90,8 +89,9 @@ export class Communicator {
                 this.peers = initializeNodes(topology, this.lucid, this.Iam);
                 //while not synced delay 
   
-                while(!ADAWatcher.inSync()){
+                while(!(ADAWatcher.inSync() && BTCWatcher.inSync())){
                     await new Promise((resolve) => setTimeout(resolve, 5000));
+                    console.log("Waiting for sync", ADAWatcher.inSync(), BTCWatcher.inSync());
                 }
                 this.start(port);
                 setInterval(this.heartbeat, HEARTBEAT);
@@ -158,9 +158,10 @@ export class Communicator {
             if(index !== this.Iam && node.state !== NodeStatus.Disconnected){
                 node.state = NodeStatus.Monitor;
                 node.votedFor = null;
-                this.broadcast('voteRequest');
             }
         });
+        this.broadcast('voteRequest');
+
         for (let i = 0; i < this.peers.length; i++) {
             if (this.peers[i].incomingConnection || i === this.Iam) {
                 newLeader = i;
@@ -186,7 +187,7 @@ export class Communicator {
             } else {
                 console.log('No leader elected', leader);
             }
-        }, HEARTBEAT );
+        }, HEARTBEAT * 2 );
     }
 
     private vote = async function (candidate: number, peer : angelPeer = null) {
@@ -299,7 +300,6 @@ export class Communicator {
 
 
     private getLeader() {
-        // get the node with the most votes 
         let leader = null;
         for(let i = 0; i < this.peers.length; i++){
           if( this.peers.filter((node) => node.votedFor === i).length >= this.topology.m){
@@ -307,8 +307,9 @@ export class Communicator {
           }
 
         }
-
-        // if the node has more than half of the votes return it
+        if(leader === null){
+           leader =  this.peers[this.Iam].votedFor 
+        }
         return leader;
     }
 
@@ -370,7 +371,6 @@ export class Communicator {
                         console.log("Unknown Signature Request");
                 }    
         
-            console.log('Signature request received');
             
         });
 
@@ -410,7 +410,7 @@ export class Communicator {
                 const [decodedTx , _ ] = ADAWatcher.decodeTransaction(tx.tx)
 
                 if(node.state === NodeStatus.Follower && node.outgoingConnection && decodedTx.required_signers.some((signature : string) => signature === node.keyHash) && tx.status === "pending"){
-                    node.outgoingConnection.emit('signatureRequest', {type: tx.type ,txHash: tx.txHash, index: tx.index , signature: tx.signatures[0], tx: tx.tx.toString()});
+                    node.outgoingConnection.emit('signatureRequest', {type: tx.type ,txHash: tx.txHash, index: tx.index , signature: tx.signatures[0], tx: tx.tx.toString(), metadata: tx.metadata});
                 }
             });
         });
