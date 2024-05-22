@@ -40,7 +40,8 @@ export type pendingCardanoTransaction = {
     txHash: string,
     index: number,
     signatures: string[],
-    tx: Lucid.TxComplete
+    tx: Lucid.TxComplete,
+    metadata? : Lucid.Metadata
 }
 
 export enum NodeStatus {

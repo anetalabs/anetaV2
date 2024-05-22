@@ -138,7 +138,7 @@ export class Coordinator{
             if(path.state <= state.completed && payment.length > 0){
 
                 payment.forEach(async (utxo) => {
-                    if(await ADAWatcher.paymentProcessed(utxo)){
+                    if(await ADAWatcher.paymentProcessed(utxo.txid, utxo.vout)){
                         path.state = state.completed;
                     }
                 });

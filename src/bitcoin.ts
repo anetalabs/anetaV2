@@ -86,10 +86,11 @@ export class BitcoinWatcher{
             console.log('Bitcoin Node is not synced');
             await new Promise((resolve) => setTimeout(resolve, 5000));
         }
+        this.isSynced = true;
+
         await this.getUtxos();
 
         this.startListener()
-        this.isSynced = true;
     };
 
     getUtxosByIndex = (index: number) => {
@@ -100,12 +101,13 @@ export class BitcoinWatcher{
         }
     }
 
-    inSycn =  () => {
+    inSync =  () => {
         return this.isSynced;
     }
 
     isNodeSynced = async () => {
         const info = await this.client.command('getblockchaininfo');
+        
         const isSynced = info.headers === info.blocks;
         return isSynced;
     }
