@@ -6,8 +6,9 @@ import { Socket as ClientSocket } from 'socket.io-client';
 import  Client  from 'socket.io-client';
 import * as Lucid  from 'lucid-cardano';
 import crypto from 'crypto';
+import { CardanoWatcher } from './cardano.js';
 
-const HEARTBEAT = 2000;
+const HEARTBEAT = 5000;
 const ELECTION_TIMEOUT = 5;
 
 
@@ -174,8 +175,8 @@ export class Communicator {
 
         this.vote(newLeader);
         setTimeout(() => {
-            const leader = this.getLeader();
-
+            const leader = this.countVotes();
+            
             if (leader !== null) {
                 console.log('Leader elected:', leader);
                 this.peers[leader].state = NodeStatus.Leader;
@@ -236,7 +237,7 @@ export class Communicator {
                 this.election();
             }
         }
-        if(  [NodeStatus.Learner, NodeStatus.Monitor, NodeStatus.Candidate].includes(this.peers[this.Iam].state)  && this.getLeader() !== null){
+        if(  [NodeStatus.Learner, NodeStatus.Monitor, NodeStatus.Candidate].includes(this.peers[this.Iam].state)  && this.countVotes() !== null){
             if(this.getLeader() === this.Iam){
                  this.peers[this.Iam].state = NodeStatus.Leader;
             }else{
@@ -298,7 +299,17 @@ export class Communicator {
     }
 
 
+    private countVotes() {
+        let leader = null;
+        for(let i = 0; i < this.peers.length; i++){
+          if( this.peers.filter((node) => node.votedFor === i).length >= this.topology.m){
+            leader = i;
+          }
 
+        }
+
+        return leader;
+    }
     private getLeader() {
         let leader = null;
         for(let i = 0; i < this.peers.length; i++){
