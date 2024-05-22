@@ -247,8 +247,6 @@ export class CardanoWatcher{
         const [txDetails, cTx] = this.decodeTransaction(tx.tx);
         console.log("txDetails",txDetails)
         const requestListing = this.mintQueue.find((request) => request.txHash === tx.txHash && request.index === tx.index);
-        const metadata = tx.tx.txComplete.auxiliary_data().to_js_value()
-        console.log("Metadata", metadata);
         if(!requestListing) return;
         const amIaSigner = txDetails.required_signers.some(async (signature : string) => signature === this.myKeyHash);
         if(!amIaSigner) return;
@@ -256,10 +254,10 @@ export class CardanoWatcher{
         const inputsClean = (txDetails.inputs.length === 1 && txDetails.inputs[0].transaction_id === tx.txHash && Number(txDetails.inputs[0].index) === tx.index);
         const outputsClean = txDetails.outputs.length === 1 && txDetails.outputs[0].address === requestListing.targetAddress ;
         const withdrawalsClean = txDetails.withdrawals === null;
-        const metadataClean = txDetails.metadata.length === 1 && txDetails.metadata[0].key === METADATA_TAG;
+       // const metadataClean = txDetails.metadata.length === 1 && txDetails.metadata[0].key === METADATA_TAG;
 
         console.log(mintClean, inputsClean, outputsClean, withdrawalsClean , txDetails, !requestListing.completed)
-        if (requestListing && mintClean && inputsClean && outputsClean && withdrawalsClean && metadataClean){
+        if (requestListing && mintClean && inputsClean && outputsClean && withdrawalsClean ){
             // const signature =  (await this.lucid.wallet.signTx(cTx)).to_bytes().reduce((str, byte) => str + byte.toString(16).padStart(2, '0'), '');
             // console.log("Signature", signature);
             // emitter.emit("signatureResponse", {txHash: tx.txHash, index: tx.index, signature});

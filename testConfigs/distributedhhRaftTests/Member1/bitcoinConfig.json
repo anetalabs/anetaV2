@@ -3,7 +3,7 @@
         "username": "test",
         "password": "123456789",
         "port": 18331,
-        "host": "31.220.94.101",
+        "host": "64.226.71.200",
         "timeout": 700000
     },
     "falbackFeeRate": 0.00001,

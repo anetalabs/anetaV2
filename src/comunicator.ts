@@ -158,6 +158,7 @@ export class Communicator {
             if(index !== this.Iam && node.state !== NodeStatus.Disconnected){
                 node.state = NodeStatus.Monitor;
                 node.votedFor = null;
+                this.broadcast('voteRequest');
             }
         });
         for (let i = 0; i < this.peers.length; i++) {
@@ -348,6 +349,10 @@ export class Communicator {
             }
         }
         );        
+
+        socket.on('voteRequest', () => {
+            this.vote(this.getLeader(), this.peers[index]);
+        });
 
         socket.on('signatureRequest', async (data) => {
             // if not leader, ignore
