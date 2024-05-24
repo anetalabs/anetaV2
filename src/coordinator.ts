@@ -107,7 +107,10 @@ export class Coordinator{
     }
 
     async onNewCardanoBlock(){
-     
+        console.log("New Cardano Block event");
+        ////////////////////////////////////////////////////////////////////
+        this.consolidatePayments()
+        ////////////////////////////////////////////////////////////////////
       await this.getOpenRequests();  
       await this.checkBurn(); 
     }

@@ -279,7 +279,36 @@ export class BitcoinWatcher{
         }
     }
 
-    async createConsolidationTransaction(indexs: number[]) {
+    async signConsolidationTransaction(txHex: string) {
+        console.log("signing consolidation transaction" , txHex)
+        const txb = bitcoin.Psbt.fromHex(txHex, {network : bitcoin.networks[this.config.network] });
+        const validScipts = this.consolidationQue.map((index) => this.getRedeemScript(index));
+        // check if the transaction is a consolidation transaction and if it is in the consolidation que 
+        let totalInputValue = 0;
+        let totalOutputValue = 0;
+        txb.data.inputs.forEach((input) => {
+            console.log(input, input.witnessUtxo.script.toString('hex'), this.utxos[1].utxos[0].scriptPubKey)
+            console.log(input.witnessScript.toString('hex'), this.getRedeemScript(1))
+            console.log(validScipts.includes(input.witnessScript.toString('hex')))
+            if(validScipts.includes(input.witnessScript.toString('hex')) === false) throw new Error('Invalid consolidation transaction Input');
+
+            totalInputValue += input.witnessUtxo.value;
+            
+        });
+
+        console.log("totalInputValue", totalInputValue)
+
+        console.log("txb.data.outputs", txb.data.outputs)
+        txb.txOutputs.forEach((output) => {
+            console.log("output", output.value)
+            totalOutputValue += output.value;
+        });
+
+        console.log("totalOutputValue", totalOutputValue)
+        console.log("fee", totalInputValue - totalOutputValue)
+    }
+
+    async createConsolidationTransaction(indexs: number[]) : Promise<[string, string[]]>{
         try{
 
             const txb = new bitcoin.Psbt({network : bitcoin.networks[this.config.network] });
@@ -324,8 +353,13 @@ export class BitcoinWatcher{
             console.log("total", total, "fee", fee, "amount", amount, "txSize", txSize, "feerate", feerate);  
             console.log({address: this.getVaultAddress(), value: amount });
             txb.addOutput({address: this.getVaultAddress(), value: amount });
+            txb.signAllInputs(this.watcherKey);
 
-            return txb.toHex();
+            const txHex = txb.toHex();
+
+            const signatures = txb.data.inputs.map((input) => input.partialSig[0].signature.toString('hex'));
+            return [txHex, signatures];
+
     } catch (e) {   
         console.log(e)
         throw e;
@@ -335,8 +369,8 @@ export class BitcoinWatcher{
     consolidatePayments = async (indexs: number[]) => {
         console.log("consolidating payments", indexs);
         if(communicator.amILeader()){ 
-                const tx = await this.createConsolidationTransaction(indexs);
-                communicator.bitcoinTxToComplete({type: "consolidation", status:"pending" , txHex: tx});
+                const [tx , signature] = await this.createConsolidationTransaction(indexs);
+                communicator.bitcoinTxToComplete({type: "consolidation", status:"pending" , txHex: tx , signatures: { "user" : signature }});
         }else{
             indexs.map(index => { 
                 if(!this.consolidationQue.includes(index)){
@@ -354,28 +388,30 @@ export class BitcoinWatcher{
     
     getFee = async () => {  
         const fee = await this.client.estimateSmartFee(100)
-        return fee.feerate ? fee.feerate : this.config.falbackFeeRate;
+        return fee.feerate ? fee.feerate * 1.5 : this.config.falbackFeeRate;
     }
 
     getUtxos = async () => {
         try{
-        if (this.gettingUtxos) return;
-        this.gettingUtxos = true;
-        const descriptors = this.address.map(address => ({ 'desc': `addr(${address})`, 'range': 1000 }));
-        descriptors.push({ 'desc': `addr(${this.getVaultAddress()})`, 'range': 1000 });
-        const height = await this.getHeight()
-        await this.client.command('scantxoutset', 'abort', descriptors)
-        const resault =  await this.client.command('scantxoutset', 'start', descriptors)
-        const utxosRaw =  resault.unspents.map((utxo) => Object.assign( {}, utxo)).filter((utxo) => utxo.height <= height - this.config.Finality);
-        // Organize utxos by address
-        const utxosByAddress = utxosRaw.reduce((acc, utxo) => {
-            const address = utxo.desc.split('(')[1].split(')')[0];
-            if (acc[address] === undefined) {
-                acc[address] = [];
-            }
-            acc[address].push(utxo);
-            return acc;
-        }, {});
+
+            console.log("fee: ", await this.getFee())
+            if (this.gettingUtxos) return;
+            this.gettingUtxos = true;
+            const descriptors = this.address.map(address => ({ 'desc': `addr(${address})`, 'range': 1000 }));
+            descriptors.push({ 'desc': `addr(${this.getVaultAddress()})`, 'range': 1000 });
+            const height = await this.getHeight()
+            await this.client.command('scantxoutset', 'abort', descriptors)
+            const resault =  await this.client.command('scantxoutset', 'start', descriptors)
+            const utxosRaw =  resault.unspents.map((utxo) => Object.assign( {}, utxo)).filter((utxo) => utxo.height <= height - this.config.Finality);
+            // Organize utxos by address
+            const utxosByAddress = utxosRaw.reduce((acc, utxo) => {
+                const address = utxo.desc.split('(')[1].split(')')[0];
+                if (acc[address] === undefined) {
+                    acc[address] = [];
+                }
+                acc[address].push(utxo);
+                return acc;
+            }, {});
         
         
         this.utxos = this.address.map((address, index) => ({

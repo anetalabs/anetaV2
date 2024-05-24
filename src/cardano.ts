@@ -349,6 +349,7 @@ export class CardanoWatcher{
                 console.log("transaction building error:", e);
             }
             
+            
             }catch(e){
                 console.log(e);
         }}else{

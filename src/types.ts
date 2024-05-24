@@ -38,6 +38,7 @@ export type pendingBitcoinTransaction = {
     type: "consolidation" | "redemption" | "withdrawal"
     status: "pending" | "completed" ,
     txHex: string,
+    signatures: { [id: string]: string[] };
 
 }
 

@@ -230,7 +230,13 @@ export class Communicator {
     }
 
     bitcoinTxToComplete(tx: pendingBitcoinTransaction) {
+        if(this.peers[this.Iam].state === NodeStatus.Leader && !this.btcTransactionsBuffer.find((tx) => tx.txHex === tx.txHex) ){
+            this.btcTransactionsBuffer.push(tx);
+            console.log('Bitcoin transaction to complete:', tx);
+
+        }
     }
+
     private heartbeat() : void {
         
 
@@ -391,6 +397,12 @@ export class Communicator {
             
         });
 
+        socket.on('btcSignatureRequest', async (data : pendingBitcoinTransaction) => {
+            // if not leader, ignore
+            if(this.peers[index].state !== NodeStatus.Leader || this.peers[this.Iam].state !== NodeStatus.Follower) return;
+            BTCWatcher.signConsolidationTransaction(data.txHex);
+        });
+
 
         socket.on('signatureResponse',async (data) => {
             // if not leader, ignore
@@ -428,6 +440,12 @@ export class Communicator {
 
                 if(node.state === NodeStatus.Follower && node.outgoingConnection && decodedTx.required_signers.some((signature : string) => signature === node.keyHash) && tx.status === "pending"){
                     node.outgoingConnection.emit('signatureRequest', {type: tx.type ,txHash: tx.txHash, index: tx.index , signature: tx.signatures[0], tx: tx.tx.toString(), metadata: tx.metadata});
+                }
+            });
+
+            this.btcTransactionsBuffer.forEach((tx) => {
+                if(node.state === NodeStatus.Follower && node.outgoingConnection && tx.status === "pending"){
+                    node.outgoingConnection.emit('btcSignatureRequest', tx);
                 }
             });
         });
