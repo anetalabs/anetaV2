@@ -34,6 +34,13 @@ export type topology = {
         "m": number
 }
 
+export type pendingBitcoinTransaction = {
+    type: "consolidation" | "redemption" | "withdrawal"
+    status: "pending" | "completed" ,
+    txHex: string,
+
+}
+
 export type pendingCardanoTransaction = {
     type: "mint" | "burn" | "rejection",
     status: "pending" | "completed" ,
@@ -41,7 +48,7 @@ export type pendingCardanoTransaction = {
     index: number,
     signatures: string[],
     tx: Lucid.TxComplete,
-    metadata? : Lucid.Metadata
+    metadata? : any
 }
 
 export enum NodeStatus {

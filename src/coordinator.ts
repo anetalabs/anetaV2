@@ -68,8 +68,8 @@ export class Coordinator{
 
         
 
-        console.log("Mint Requests", mintRequests);
-        console.log("Redemption Requests", redemptionRequests);
+        //console.log("Mint Requests", mintRequests);
+        //console.log("Redemption Requests", redemptionRequests);
         mintRequests.forEach((request) => {
             const index = request.decodedDatum.path;
             console.log("Minting request", request);
@@ -102,12 +102,14 @@ export class Coordinator{
         
     }
 
+    getPaymentPaths(){  
+        return this.paymentPaths;
+    }
+
     async onNewCardanoBlock(){
-      console.log("New Cardano Block event");
-      
+     
       await this.getOpenRequests();  
       await this.checkBurn(); 
-      emitter.emit("paymentPathsUpdate", this.paymentPaths);
     }
 
     async onNewBtcBlock(){
@@ -136,13 +138,13 @@ export class Coordinator{
         this.paymentPaths.forEach((path, index) => {
             let payment = BTCWatcher.getUtxosByIndex(index);
             if(path.state <= state.completed && payment.length > 0){
-
                 payment.forEach(async (utxo) => {
                     if(await ADAWatcher.paymentProcessed(utxo.txid, utxo.vout)){
                         path.state = state.completed;
                     }
                 });
             }
+
 
             if(path.state === state.finished && payment.length  === 0){
                 path = {state: state.open, index: index , address: BTCWatcher.getAddress(index)};
@@ -212,4 +214,5 @@ export class Coordinator{
             });
         }
     }
+
 }

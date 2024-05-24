@@ -1,6 +1,6 @@
 import { ADAWatcher, BTCWatcher } from './index.js';
 import { emitter } from './coordinator.js';
-import { topology, secretsConfig, pendingCardanoTransaction, NodeStatus } from './types.js';
+import { topology, secretsConfig, pendingCardanoTransaction, pendingBitcoinTransaction, NodeStatus } from './types.js';
 import { Server, Socket as ServerSocket } from 'socket.io';
 import { Socket as ClientSocket } from 'socket.io-client';
 import  Client  from 'socket.io-client';
@@ -42,20 +42,13 @@ export class Communicator {
     private topology: topology;
     private leaderTimeout: Date;
     private transactionsBuffer: pendingCardanoTransaction[] = [];
+    private btcTransactionsBuffer: pendingBitcoinTransaction[] = [];
     private Iam: number;
     constructor(topology: topology, secrets: secretsConfig , port: number) {
         this.heartbeat = this.heartbeat.bind(this);
 
 
-
-        emitter.on("txToComplete", (data : pendingCardanoTransaction) => {
-            if(this.peers[this.Iam].state === NodeStatus.Leader  && !this.transactionsBuffer.find((tx) => tx.txHash === data.txHash && tx.index === data.index) ){
-                 const tx = data
-                 tx.status = "pending"
-                this.transactionsBuffer.push(tx);
-                console.log('Transaction to complete:', data);
-            }
-        });
+        
 
         emitter.on("signatureResponse", (data) => {
             //send the signature to the leader
@@ -92,7 +85,7 @@ export class Communicator {
   
                 while(!(ADAWatcher.inSync() && BTCWatcher.inSync())){
                     await new Promise((resolve) => setTimeout(resolve, 5000));
-                    console.log("Waiting for sync", ADAWatcher.inSync(), BTCWatcher.inSync());
+                    console.log(`Waiting for ${!ADAWatcher.inSync()? "Cardano-Watcher " : "" }${!BTCWatcher.inSync()? "Bitcoin-Watcher " : "" }sync`);
                 }
                 this.start(port);
                 setInterval(this.heartbeat, HEARTBEAT);
@@ -221,10 +214,23 @@ export class Communicator {
         return(quorum);
     }
 
+    
+
     amILeader() : boolean {
         return this.peers[this.Iam].state === NodeStatus.Leader;
     }
 
+    cardanoTxToComplete(data: pendingCardanoTransaction) {
+        if(this.peers[this.Iam].state === NodeStatus.Leader  && !this.transactionsBuffer.find((tx) => tx.txHash === data.txHash && tx.index === data.index) ){
+            const tx = data
+            tx.status = "pending"
+           this.transactionsBuffer.push(tx);
+           console.log('Transaction to complete:', data);
+       }
+    }
+
+    bitcoinTxToComplete(tx: pendingBitcoinTransaction) {
+    }
     private heartbeat() : void {
         
 
@@ -477,7 +483,7 @@ export class Communicator {
 
     }
 
-    broadcast(method, params= undefined) {
+    private broadcast(method, params= undefined) {
         this.peers.forEach((node, index) => {
             if (node.outgoingConnection) {
                 node.outgoingConnection.emit(method, params);

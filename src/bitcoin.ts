@@ -9,6 +9,7 @@ import {BIP32Factory} from 'bip32';
 import { emitter } from "./coordinator.js";
 import { utxo } from "./types.js";
 import { hexToString } from "./helpers.js";
+import { ADAWatcher, communicator } from "./index.js";
 
 const cBTCiD = "95d93745addaa042497bb7bd8a63e1a1f39e848eff857ec0e981c7a963425443"
 const ECPair =  ECPairFactory(ecc);
@@ -30,6 +31,8 @@ export class BitcoinWatcher{
     private config: bitcoinConfig ;
     private topology: topology;
     private gettingUtxos: boolean = false;
+    
+    private consolidationQue: number[] = []; 
 
     constructor(config : bitcoinConfig, topology : topology, secrets : secretsConfig){
         console.log("bitcoin watcher")
@@ -39,6 +42,8 @@ export class BitcoinWatcher{
         this.address =  Array.from({length: config.paymentPaths}, (_, index) => index).map((index) => this.getAddress(index))
         console.log(this.address)
         this.watcherSync()
+
+
 
         const seed = bip39.mnemonicToSeedSync(secrets.seed);
         const bip32 = BIP32Factory(ecc);
@@ -180,6 +185,7 @@ export class BitcoinWatcher{
             });
         }
 
+
         txSize += utxos.length * inputSize;
         console.log(txSize)
         if (total === 0) throw new Error('No UTXOs to redeem');
@@ -273,64 +279,74 @@ export class BitcoinWatcher{
         }
     }
 
-    consolidatePayments = async (indexs: number[]) => {
+    async createConsolidationTransaction(indexs: number[]) {
         try{
 
-        const txb = new bitcoin.Psbt({network : bitcoin.networks[this.config.network] });
-        let total = 0;
-        let txSize = 10 + 35;
-        const nonWitnessData = 41;
-        const witnessData = this.topology.m * 73 + this.topology.topology.length * 34 + 3 + this.topology.m + this.topology.topology.length * 34 + 1;
-        const inputSize = nonWitnessData + Math.ceil(witnessData / 4);   
-        console.log("consolidating payments", indexs);
+            const txb = new bitcoin.Psbt({network : bitcoin.networks[this.config.network] });
+            let total = 0;
+            let txSize = 10 + 35;
+            const nonWitnessData = 41;
+            const witnessData = this.topology.m * 73 + this.topology.topology.length * 34 + 3 + this.topology.m + this.topology.topology.length * 34 + 1;
+            const inputSize = nonWitnessData + Math.ceil(witnessData / 4);   
+            console.log("consolidating payments", indexs);
 
 
-        indexs.map((index) => {
-            if (index >= this.utxos.length - 1 ) throw new Error('Index out of range');
+            indexs.map((index) => {
+                if (index >= this.utxos.length - 1 ) throw new Error('Index out of range');
 
-            const addressUtxos = this.utxos[index].utxos;
-            console.log("addressUtxos",indexs , addressUtxos)
-            const redeemScript = Buffer.from(this.getRedeemScript(index), 'hex');
+                const addressUtxos = this.utxos[index].utxos;
+                console.log("addressUtxos",indexs , addressUtxos)
+                const redeemScript = Buffer.from(this.getRedeemScript(index), 'hex');
 
-            
-        for (let i = 0; i < addressUtxos.length; i++) {
-            console.log("amount", addressUtxos[i].amount)
-            total += Math.round(this.btcToSat(addressUtxos[i].amount)) ;
-            txb.addInput({
-                hash: addressUtxos[i].txid,
-                index: addressUtxos[i].vout,
-                witnessUtxo: {
-                    script: Buffer.from(addressUtxos[i].scriptPubKey, 'hex'),
-                    value: Math.round(addressUtxos[i].amount * 100_000_000),
-                },
-                witnessScript: redeemScript,
+                
+            for (let i = 0; i < addressUtxos.length; i++) {
+                console.log("amount", addressUtxos[i].amount)
+                total += Math.round(this.btcToSat(addressUtxos[i].amount)) ;
+                txb.addInput({
+                    hash: addressUtxos[i].txid,
+                    index: addressUtxos[i].vout,
+                    witnessUtxo: {
+                        script: Buffer.from(addressUtxos[i].scriptPubKey, 'hex'),
+                        value: Math.round(addressUtxos[i].amount * 100_000_000),
+                    },
+                    witnessScript: redeemScript,
+                });
+            }
+
+            txSize += addressUtxos.length * inputSize;
             });
-        }
+            
+            if (total === 0) throw new Error('No UTXOs to redeem');
+            const feerate =   await this.getFee() ;
+        
+            const fee = Math.round( 100_000 * feerate  * txSize) ; //round to 8 decimal places 
+            const amount = total - fee;
+            console.log("total", total, "fee", fee, "amount", amount, "txSize", txSize, "feerate", feerate);  
+            console.log({address: this.getVaultAddress(), value: amount });
+            txb.addOutput({address: this.getVaultAddress(), value: amount });
 
-        txSize += addressUtxos.length * inputSize;
-        });
-
-        if (total === 0) throw new Error('No UTXOs to redeem');
-        const feerate =   await this.getFee() ;
-    
-        const fee = Math.round( 100_000 * feerate  * txSize) ; //round to 8 decimal places 
-        const amount = total - fee;
-        console.log("total", total, "fee", fee, "amount", amount, "txSize", txSize, "feerate", feerate);  
-        console.log({address: this.getVaultAddress(), value: amount });
-        txb.addOutput({address: this.getVaultAddress(), value: amount });
-
-        txb.signAllInputs(this.watcherKey);
-        txb.finalizeAllInputs();
-        const tx = txb.extractTransaction();
-
-        const txHex = tx.toHex();
-        const resault = await this.client.sendRawTransaction(txHex);
-        console.log("consolidation completed", resault);
+            return txb.toHex();
     } catch (e) {   
         console.log(e)
         throw e;
     }
+}
+
+    consolidatePayments = async (indexs: number[]) => {
+        console.log("consolidating payments", indexs);
+        if(communicator.amILeader()){ 
+                const tx = await this.createConsolidationTransaction(indexs);
+                communicator.bitcoinTxToComplete({type: "consolidation", status:"pending" , txHex: tx});
+        }else{
+            indexs.map(index => { 
+                if(!this.consolidationQue.includes(index)){
+                    this.consolidationQue.push(index);
+                }
+        });
+        }
     }
+
+
 
     refundIndex = (index: number) => {
 

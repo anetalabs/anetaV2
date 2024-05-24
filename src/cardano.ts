@@ -8,7 +8,7 @@ import {cardanoConfig, topology, secretsConfig, mintRequest , MintRequestSchema,
 import {emitter}  from "./coordinator.js";
 import axios from "axios";
 import { getDb } from "./db.js";
-import { BTCWatcher, communicator } from "./index.js";
+import { BTCWatcher, communicator, coordinator } from "./index.js";
 import { json } from "stream/consumers";
 const METADATA_TAG = 85471236584;
 
@@ -213,7 +213,7 @@ export class CardanoWatcher{
                 try{
                     const tx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false});
                     const signature = await  tx.partialSign();
-                    emitter.emit("txToComplete" , {type: "rejection", txHash, index, signatures: [signature] , tx });
+                    communicator.cardanoTxToComplete({type: "rejection", txHash, index, signatures: [signature] , tx, status: "pending"});
                 }catch(e){
                     console.log("transaction building error:", e);
                 }
@@ -344,7 +344,7 @@ export class CardanoWatcher{
             try{
                 const tx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false});
                 const signature = await  tx.partialSign();
-                emitter.emit("txToComplete" , {type: "mint", txHash, index, signatures: [signature] , tx , metadata});
+                communicator.cardanoTxToComplete( {type: "mint", txHash, index, signatures: [signature] , tx , status: "pending", metadata});
             }catch(e){
                 console.log("transaction building error:", e);
             }
@@ -583,7 +583,6 @@ export class CardanoWatcher{
         if(!this.syncing )
             emitter.emit("newCardanoBlock")
         
-        console.log("New Cardano Block",blockHash, block.header.slot,  block.header.height);
         return true;
     }
 
@@ -595,7 +594,6 @@ export class CardanoWatcher{
     }
 
     async registerNewBlock(block: CardanoBlock){
-        console.log("New Block", block.header.height, block.header.hash);
         await Promise.all(block.body.tx.map(async (tx) => {
             // find all mints of cBTC
 

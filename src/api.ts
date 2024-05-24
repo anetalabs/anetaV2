@@ -1,6 +1,6 @@
 import express from 'express';
 import {emitter}  from "./coordinator.js";
-
+import { communicator, coordinator } from './index.js';
 export default class ApiServer {
   private app: express.Express;
   private networkStatus: string = "unknown"
@@ -16,9 +16,6 @@ export default class ApiServer {
       this.networkStatus = status
     })
 
-    emitter.on('paymentPathsUpdate', (status) => {
-      this.paymentPaths = status
-    })
 
     emitter.on("newUtxos", (utxos) => {
       this.utxos = utxos
@@ -46,11 +43,11 @@ export default class ApiServer {
     // Add a status endpoint
     this.app.get('/status', (req, res) => {
       
-      res.json({ status: 'OK', networkStatus: this.networkStatus, paymentPaths: this.paymentPaths });
+      res.json({ status: 'OK', networkStatus: this.networkStatus, paymentPaths: coordinator.getPaymentPaths() });
     });
 
     this.app.get('/paymentPaths', (req, res) => {
-      res.json({ paymentPaths: this.paymentPaths });
+      res.json({ paymentPaths: coordinator.getPaymentPaths()  });
     });
 
     this.app.get("/paymentPaths/:index", (req, res) => {
