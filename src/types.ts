@@ -1,6 +1,6 @@
 import exp from 'constants'
 import * as Lucid  from 'lucid-cardano'
-
+import * as bitcoin from 'bitcoinjs-lib'
 
 export  type bitcoinConfig =
 {
@@ -37,9 +37,7 @@ export type topology = {
 export type pendingBitcoinTransaction = {
     type: "consolidation" | "redemption" | "withdrawal"
     status: "pending" | "completed" ,
-    txHex: string,
-    signatures: { [id: string]: string[] };
-
+    tx: bitcoin.Psbt,
 }
 
 export type pendingCardanoTransaction = {

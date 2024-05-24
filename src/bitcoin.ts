@@ -279,7 +279,7 @@ export class BitcoinWatcher{
         }
     }
 
-    async signConsolidationTransaction(txHex: string) {
+    signConsolidationTransaction(txHex: string) {
         console.log("signing consolidation transaction" , txHex)
         const txb = bitcoin.Psbt.fromHex(txHex, {network : bitcoin.networks[this.config.network] });
         const validScipts = this.consolidationQue.map((index) => this.getRedeemScript(index));
@@ -300,15 +300,34 @@ export class BitcoinWatcher{
 
         console.log("txb.data.outputs", txb.data.outputs)
         txb.txOutputs.forEach((output) => {
-            console.log("output", output.value)
+            console.log("output", output.address, this.getVaultAddress())
             totalOutputValue += output.value;
+            if (output.address !== this.getVaultAddress()) throw new Error('Invalid consolidation transaction Output');
         });
 
+    
         console.log("totalOutputValue", totalOutputValue)
         console.log("fee", totalInputValue - totalOutputValue)
+        txb.signAllInputs(this.watcherKey);
+
+        return txb.toHex();
     }
 
-    async createConsolidationTransaction(indexs: number[]) : Promise<[string, string[]]>{
+    combine(psbt1: bitcoin.Psbt, psbt2: string) {
+        const txb1 = psbt1
+        const txb2 = bitcoin.Psbt.fromHex(psbt2, {network : bitcoin.networks[this.config.network] });
+        const txb = txb1.combine(txb2);
+        return txb;
+    }
+
+    consolidateAndSubmit(txb: bitcoin.Psbt) {
+        txb.finalizeAllInputs();
+        const tx = txb.extractTransaction();
+        const txHex = tx.toHex();
+        this.client.sendRawTransaction(txHex);
+    }
+
+    async createConsolidationTransaction(indexs: number[]) : Promise< bitcoin.Psbt>{
         try{
 
             const txb = new bitcoin.Psbt({network : bitcoin.networks[this.config.network] });
@@ -355,10 +374,10 @@ export class BitcoinWatcher{
             txb.addOutput({address: this.getVaultAddress(), value: amount });
             txb.signAllInputs(this.watcherKey);
 
-            const txHex = txb.toHex();
+            // const txHex = txb.toHex();
 
-            const signatures = txb.data.inputs.map((input) => input.partialSig[0].signature.toString('hex'));
-            return [txHex, signatures];
+            // const signatures = txb.data.inputs.map((input) => input.partialSig[0].signature.toString('hex'));
+            return txb;
 
     } catch (e) {   
         console.log(e)
@@ -369,8 +388,8 @@ export class BitcoinWatcher{
     consolidatePayments = async (indexs: number[]) => {
         console.log("consolidating payments", indexs);
         if(communicator.amILeader()){ 
-                const [tx , signature] = await this.createConsolidationTransaction(indexs);
-                communicator.bitcoinTxToComplete({type: "consolidation", status:"pending" , txHex: tx , signatures: { "user" : signature }});
+                const tx  = await this.createConsolidationTransaction(indexs);
+                communicator.bitcoinTxToComplete({type: "consolidation", status:"pending" , tx: tx });
         }else{
             indexs.map(index => { 
                 if(!this.consolidationQue.includes(index)){

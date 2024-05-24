@@ -7,6 +7,7 @@ import  Client  from 'socket.io-client';
 import * as Lucid  from 'lucid-cardano';
 import crypto from 'crypto';
 import { CardanoWatcher } from './cardano.js';
+import { BitcoinWatcher } from './bitcoin.js';
 
 const HEARTBEAT = 5000;
 const ELECTION_TIMEOUT = 5;
@@ -59,6 +60,8 @@ export class Communicator {
             }
             
         }   );
+
+
 
         
 
@@ -230,7 +233,7 @@ export class Communicator {
     }
 
     bitcoinTxToComplete(tx: pendingBitcoinTransaction) {
-        if(this.peers[this.Iam].state === NodeStatus.Leader && !this.btcTransactionsBuffer.find((tx) => tx.txHex === tx.txHex) ){
+        if(this.peers[this.Iam].state === NodeStatus.Leader && !this.btcTransactionsBuffer.find((innerTx) => tx.tx.toHex() === innerTx.tx.toHex()) ){
             this.btcTransactionsBuffer.push(tx);
             console.log('Bitcoin transaction to complete:', tx);
 
@@ -397,11 +400,32 @@ export class Communicator {
             
         });
 
-        socket.on('btcSignatureRequest', async (data : pendingBitcoinTransaction) => {
+        socket.on('btcSignatureRequest', async (data : string ) => {
             // if not leader, ignore
             if(this.peers[index].state !== NodeStatus.Leader || this.peers[this.Iam].state !== NodeStatus.Follower) return;
-            BTCWatcher.signConsolidationTransaction(data.txHex);
+            const signature = BTCWatcher.signConsolidationTransaction(data);
+            console.log("seding signature", signature);
+            this.peers[this.getLeader()].outgoingConnection.emit('btcSignatureResponse', signature);
+
         });
+
+        socket.on('btcSignatureResponse', async (data) => {
+
+            // if not leader, ignore
+            if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
+            this.btcTransactionsBuffer.forEach((tx) => {
+                try{
+                    tx.tx = BTCWatcher.combine(tx.tx,data)
+                    if(tx.tx.data.inputs.length >= this.topology.m){
+                        tx.status = "completed";
+                        BTCWatcher.consolidateAndSubmit(tx.tx);
+                    }
+                }catch(err){
+                    console.log("consolidation error:", err);
+                }
+
+            });
+             });
 
 
         socket.on('signatureResponse',async (data) => {
@@ -445,7 +469,7 @@ export class Communicator {
 
             this.btcTransactionsBuffer.forEach((tx) => {
                 if(node.state === NodeStatus.Follower && node.outgoingConnection && tx.status === "pending"){
-                    node.outgoingConnection.emit('btcSignatureRequest', tx);
+                    node.outgoingConnection.emit('btcSignatureRequest', tx.tx.toHex());
                 }
             });
         });

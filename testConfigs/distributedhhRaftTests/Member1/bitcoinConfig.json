@@ -2,8 +2,8 @@
     "bitcoinRPC" :{
         "username": "test",
         "password": "123456789",
-        "port": 18332,
-        "host": "127.0.0.1",
+        "port": 18331,
+        "host": "64.226.71.200",
         "timeout": 700000
     },
     "falbackFeeRate": 0.00001,
