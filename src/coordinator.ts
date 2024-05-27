@@ -1,10 +1,12 @@
-import { BTCWatcher  , ADAWatcher } from "./index.js";
+import { BTCWatcher  , ADAWatcher, communicator } from "./index.js";
 import EventEmitter from "events";
 import { requestId } from "./helpers.js";
 export const emitter = new EventEmitter();
-import { redemptionRequest, mintRequest,  utxo , protocolConfig, MintRequestSchema} from "./types.js";
+import { redemptionRequest, mintRequest,  utxo , protocolConfig, MintRequestSchema, redemptionController} from "./types.js";
+import {Psbt} from "bitcoinjs-lib";
 import { getDb } from "./db.js";
 import { Collection } from "mongodb";
+import { BitcoinWatcher } from "./bitcoin.js";
 
 enum state {
     open,
@@ -21,13 +23,6 @@ enum redemptionState{
     completed,
 }
 
-interface redemptionController{
-    state : redemptionState,
-    currentTransaction?: string
-    requestsFilling?: redemptionRequest[]
-    burningTransaction?: string,
-    redemptionTx?: string
-}
 
 interface paymentPaths{
     state: state,
@@ -73,7 +68,11 @@ export class Coordinator{
         mintRequests.forEach((request) => {
             const index = request.decodedDatum.path;
             console.log("Minting request", request);
-            if (this.paymentPaths[index].state === state.open){
+            if (request.decodedDatum.amount < this.config.minMint){
+                console.log("Minting amount too low, rejecting request");
+                ADAWatcher.rejectRequest(request.txHash, request.outputIndex);
+            }
+            if (this.paymentPaths[index].state === state.open ){
                 this.paymentPaths[index].state = state.commited;
                 this.paymentPaths[index].request = request;
             }else if (!this.paymentPaths[index].request || requestId(this.paymentPaths[index].request) !==  requestId(request)){
@@ -85,21 +84,37 @@ export class Coordinator{
         
         console.log("redeption state", this.redemptionState);  
 
-        if(  redemptionRequests.length  > 0 && this.redemptionState.state === redemptionState.open){
-            try{
-                
-                this.redemptionState.currentTransaction = await BTCWatcher.craftRedemptionTransaction(redemptionRequests);
-                this.redemptionState.state = redemptionState.forged;
-                this.redemptionState.requestsFilling = redemptionRequests;
-                this.redemptionState.burningTransaction = await ADAWatcher.burn(redemptionRequests, this.redemptionState.currentTransaction);
-                // store the transaction in the database
-                this.redemptionDb.findOneAndUpdate({}, {$set: this.redemptionState}, {upsert: true});
 
-            }catch(e){
+        if (redemptionRequests.length > 0 && this.redemptionState.state === redemptionState.open) {
+            try {
+                if(communicator.amILeader()){
+                    let [currentTransaction, requests] = await BTCWatcher.craftRedemptionTransaction(redemptionRequests);
+                    await this.newRedemption(currentTransaction, requests);
+                }
+            } catch (e) {
                 console.log("Error crafting redemption transaction", e);
             }
         }
         
+    }
+
+    private async newRedemption(currentTransaction: Psbt ,redemptionRequests: redemptionRequest[]) {
+        BTCWatcher.checkRedemptionTx(currentTransaction, redemptionRequests);
+        this.redemptionState.currentTransaction = currentTransaction;
+        this.redemptionState.state = redemptionState.forged;
+        this.redemptionState.requestsFilling = redemptionRequests;
+        this.redemptionState.burningTransaction = await ADAWatcher.burn(redemptionRequests, this.redemptionState.currentTransaction.toHex());
+        // store the transaction in the database
+        this.redemptionDb.findOneAndUpdate({}, { $set: this.redemptionState }, { upsert: true });
+
+    }
+
+    calculatePaymentAmount(request: mintRequest , utxoNumber : number = 1  ){
+        return request.decodedDatum.amount + this.config.fixedFee + this.config.margin * request.decodedDatum.amount + this.config.utxoCharge * (utxoNumber - 1) ; 
+    }
+
+    calculateRedemptionAmount(request: redemptionRequest){
+        return request.decodedDatum.amount  - this.config.fixedFee - this.config.margin * request.decodedDatum.amount;
     }
 
     getPaymentPaths(){  
@@ -108,9 +123,6 @@ export class Coordinator{
 
     async onNewCardanoBlock(){
         console.log("New Cardano Block event");
-        ////////////////////////////////////////////////////////////////////
-        this.consolidatePayments()
-        ////////////////////////////////////////////////////////////////////
       await this.getOpenRequests();  
       await this.checkBurn(); 
     }
@@ -156,18 +168,16 @@ export class Coordinator{
 
             if (path.state === state.commited && payment.length > 0){
                 let sum = BTCWatcher.btcToSat(payment.reduce((acc, utxo) => acc + utxo.amount, 0));
-                const fee = BTCWatcher.btcToSat(this.config.fixedFee) 
-                + this.config.margin * Number(path.request.decodedDatum.amount)
-                + this.config.utxoCharge * (payment.length -1);
+                const totalToPay = this.calculatePaymentAmount(path.request);
                 
                 console.log(`checking payment for path ${index} 
                             current total payment: ${sum}
                             utxos: ${payment.length}
-                            fee: ${fee}
                             minting amount: ${path.request.decodedDatum.amount}
-                            total payment required: ${Number(path.request.decodedDatum.amount) + fee} `.trim());
+                            fee: ${this.config.fixedFee}
+                            total payment required: ${totalToPay} `.trim());
 
-                if(sum  >= (Number(path.request.decodedDatum.amount) + fee)){
+                if(sum  >= totalToPay){
                     console.log("Payment found");
                     path.state = state.payed;
                     path.payment = payment;
@@ -183,7 +193,7 @@ export class Coordinator{
 
     async checkRedemption(){
         if(this.redemptionState.state === redemptionState.burned){
-            if(await BTCWatcher.isRedemptionConfirmed(this.redemptionState.redemptionTx)){
+            if(await BTCWatcher.isTxConfirmed(this.redemptionState.redemptionTx)){
                 this.redemptionState.state = redemptionState.completed;
                 this.redemptionDb.findOneAndUpdate({}, {$set: this.redemptionState}, {upsert: true});
             }

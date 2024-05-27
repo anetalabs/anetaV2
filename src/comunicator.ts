@@ -48,9 +48,6 @@ export class Communicator {
     constructor(topology: topology, secrets: secretsConfig , port: number) {
         this.heartbeat = this.heartbeat.bind(this);
 
-
-        
-
         emitter.on("signatureResponse", (data) => {
             //send the signature to the leader
             console.log('Signature response received', data);
@@ -60,13 +57,6 @@ export class Communicator {
             }
             
         }   );
-
-
-
-        
-
-        
-
 
         this.topology = topology;
         (async () => {
@@ -418,7 +408,7 @@ export class Communicator {
                     tx.tx = BTCWatcher.combine(tx.tx,data)
                     if(tx.tx.data.inputs.length >= this.topology.m){
                         tx.status = "completed";
-                        BTCWatcher.consolidateAndSubmit(tx.tx);
+                        BTCWatcher.completeAndSubmit(tx.tx);
                     }
                 }catch(err){
                     console.log("consolidation error:", err);

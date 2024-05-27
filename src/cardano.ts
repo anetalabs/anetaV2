@@ -4,7 +4,7 @@ import pkg from 'blakejs';
 const { blake2bHex } = pkg;
 import * as Lucid  from 'lucid-cardano'
 import { CardanoSyncClient , CardanoBlock } from "@utxorpc/sdk";
-import {cardanoConfig, topology, secretsConfig, mintRequest , MintRequestSchema, RedemptionRequestSchema, utxo, redemptionRequest, NodeStatus} from "./types.js"
+import {cardanoConfig, secretsConfig, mintRequest , MintRequestSchema, RedemptionRequestSchema, utxo, redemptionRequest} from "./types.js"
 import {emitter}  from "./coordinator.js";
 import axios from "axios";
 import { getDb } from "./db.js";
@@ -246,9 +246,10 @@ export class CardanoWatcher{
             if(!requestListing) return;
 
             const openRequests =await this.lucid.provider.getUtxos(this.address);
-            const request = openRequests.find( (request) => request.txHash === tx.txHash && request.outputIndex === tx.index);
-            const datum = this.decodeDatum(request.datum);
-            const utxos = BTCWatcher.getUtxosByIndex(datum.path)
+            const request = openRequests.find( (request) => request.txHash === tx.txHash && request.outputIndex === tx.index) as mintRequest;
+            request.decodedDatum = this.decodeDatum(request.datum);
+            const utxos = BTCWatcher.getUtxosByIndex(request.decodedDatum .path)
+
             let total = 0;
             for(let payment of  tx.metadata){
                 console.log("Checking Payment", payment)
@@ -265,13 +266,13 @@ export class CardanoWatcher{
             const amIaSigner = txDetails.required_signers.some(async (signature : string) => signature === this.myKeyHash);
             if(!amIaSigner) return;
 
-            const mintClean = Object.keys(txDetails.mint).length === 1  &&   Object.keys(txDetails.mint[this.cBTCPolicy]).length === 1 &&  Number(txDetails.mint[this.cBTCPolicy][this.cBtcHex]) === Number( (datum.amount)) ; //metadata.amount;
+            const mintClean = Object.keys(txDetails.mint).length === 1  &&   Object.keys(txDetails.mint[this.cBTCPolicy]).length === 1 &&  Number(txDetails.mint[this.cBTCPolicy][this.cBtcHex]) === Number( (request.decodedDatum.amount)) ; //metadata.amount;
             const inputsClean = (txDetails.inputs.length === 1 && txDetails.inputs[0].transaction_id === tx.txHash && Number(txDetails.inputs[0].index) === tx.index);
             const outputsClean = txDetails.outputs.length === 1 && txDetails.outputs[0].address === requestListing.targetAddress ;
             const withdrawalsClean = txDetails.withdrawals === null;
         // const metadataClean = txDetails.metadata.length === 1 && txDetails.metadata[0].key === METADATA_TAG;
-            const paymentComplete = true//Number(total) >= Number( this.mintPayment(BTCWatcher.btcToSat(datum.amount), utxos.length));
-            console.log(mintClean, inputsClean, outputsClean, withdrawalsClean , !requestListing.completed, paymentComplete,datum.amount , total)
+            const paymentComplete = Number(total) >= Number( coordinator.calculatePaymentAmount(request, utxos.length));
+            console.log(mintClean, inputsClean, outputsClean, withdrawalsClean , !requestListing.completed, paymentComplete,request.decodedDatum.amount , total)
             if (!requestListing.completed && mintClean && inputsClean && outputsClean && withdrawalsClean && paymentComplete ){
                 const signature =  (await this.lucid.wallet.signTx(cTx)).to_bytes().reduce((str, byte) => str + byte.toString(16).padStart(2, '0'), '');
                 console.log("Signature", signature);
@@ -284,10 +285,6 @@ export class CardanoWatcher{
         }
     }
     
-    mintPayment(amount: number, utxos: number){
-        return amount;
-    }
-
     async completeMint(txHash: string, index: number, payments: utxo[]){
         if(communicator.amILeader()){
         try{
@@ -438,9 +435,9 @@ export class CardanoWatcher{
                 const decodedRequest = request as mintRequest; // Cast decodedRequest to the correct type
                     try{    
 
-                        decodedRequest["decodedDatum"] = this.decodeDatum(request.datum)
+                        decodedRequest["decodedDatum"] = this.decodeDatum(request.datum);
                         return decodedRequest;
-                    
+                        
                     }catch(e){
                         console.log("Error Decoding Request", e);
                         this.rejectRequest(request.txHash, request.outputIndex);
@@ -587,7 +584,9 @@ export class CardanoWatcher{
         return true;
     }
 
-
+    getCBtcId() : string{
+        return this.cBTCPolicy + this.cBtcHex;
+    }
 
     async getUtxoSender(hash : string, index: number){
         const data = await axios.get("https://cardano-preview.blockfrost.io/api/v0/txs/" + hash + "/utxos", {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO"}});

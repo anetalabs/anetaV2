@@ -11,7 +11,6 @@ import { utxo } from "./types.js";
 import { hexToString } from "./helpers.js";
 import { ADAWatcher, communicator } from "./index.js";
 
-const cBTCiD = "95d93745addaa042497bb7bd8a63e1a1f39e848eff857ec0e981c7a963425443"
 const ECPair =  ECPairFactory(ecc);
 export const utxoEventEmitter = new EventEmitter();
 
@@ -116,6 +115,20 @@ export class BitcoinWatcher{
         const isSynced = info.headers === info.blocks;
         return isSynced;
     }
+    
+    combine(psbt1: bitcoin.Psbt, psbt2: string) {
+        const txb1 = psbt1
+        const txb2 = bitcoin.Psbt.fromHex(psbt2, {network : bitcoin.networks[this.config.network] });
+        const txb = txb1.combine(txb2);
+        return txb;
+    }
+
+    completeAndSubmit(txb: bitcoin.Psbt) {
+        txb.finalizeAllInputs();
+        const tx = txb.extractTransaction();
+        const txHex = tx.toHex();
+        this.client.sendRawTransaction(txHex);
+    }
 
     withdrawProfits = async (amount: number) => {
         const txb = new bitcoin.Psbt({network : bitcoin.networks[this.config.network] });
@@ -154,11 +167,11 @@ export class BitcoinWatcher{
         const txHex = tx.toHex();
         const resault = await this.client.sendRawTransaction(txHex);
         console.log(resault);
-    
-
+        
+        
     }
 
-    craftRedemptionTransaction = async (requests: redemptionRequest[]) => {
+    craftRedemptionTransaction = async (requests: redemptionRequest[]) : Promise<[bitcoin.Psbt , redemptionRequest[] ]> => {
         while ( this.isSynced === false) {
             await new Promise((resolve) => setTimeout(resolve, 5000));
         }
@@ -194,21 +207,56 @@ export class BitcoinWatcher{
         let amountToSend = 0
         
         requests.forEach((request) => {
-            console.log("request", hexToString( request.decodedDatum.destinationAddress), request.assets[cBTCiD])
-            txb.addOutput({address:hexToString( request.decodedDatum.destinationAddress), value: Number(request.assets[cBTCiD]) });
-            amountToSend += Number(request.assets[cBTCiD]);
+            console.log("request", hexToString( request.decodedDatum.destinationAddress), request.assets[ADAWatcher.getCBtcId()])
+            txb.addOutput({address:hexToString( request.decodedDatum.destinationAddress), value: Number(request.assets[ADAWatcher.getCBtcId()]) });
+            amountToSend += Number(request.assets[ADAWatcher.getCBtcId()]);
         });
 
         txb.addOutput({address: this.getVaultAddress(), value: total - amountToSend - fee });
         
         
-        // if (amountToSend < requests.reduce((acc, request) => acc + Number(request.assets[cBTCiD]), 0)) throw new Error('Not enough funds');
+        // if (amountToSend < requests.reduce((acc, request) => acc + Number(request.assets[ADAWatcher.getCBtcId()]), 0)) throw new Error('Not enough funds');
       
-        return(txb.toHex());
+        return [txb, requests];
     }
 
-    completeRedemption = async (txString: string) => {
-        const txb = bitcoin.Psbt.fromHex(txString, {network : bitcoin.networks[this.config.network] });
+    checkRedemptionTx(tx : bitcoin.Psbt, redemptionRequests: redemptionRequest[]) : boolean{
+        // check than no 2 requests are the same by txHash and outputIndex
+        const requestMap = new Map<string, redemptionRequest>();
+        let totalInputValue = 0;
+        let totalOutputValue = 0;
+        redemptionRequests.forEach((request) => {
+            const key = request.txHash + request.outputIndex;
+            if(requestMap.has(key)) throw new Error('Duplicate Redemption Request');
+            requestMap.set(key, request);
+        });
+
+
+        const ValidRedemptionScript = this.getVaultRedeemScript()
+        tx.data.inputs.forEach((input) => {
+            if(input.witnessScript.toString('hex') !== ValidRedemptionScript) throw new Error('Invalid consolidation transaction Input');
+        });
+
+        
+        tx.txOutputs.forEach((output) => {
+            if(output.address !== this.getVaultAddress())
+            {
+                const request = redemptionRequests.find((request) => (request.decodedDatum.destinationAddress === output.address) && ( Number(request.assets[ADAWatcher.getCBtcId()]) === output.value));
+                if(request === undefined) throw new Error('Invalid consolidation transaction Output');    
+                
+                if(requestMap.has(request.txHash + request.outputIndex)){
+                     requestMap.delete(request.txHash + request.outputIndex)
+                }else{
+                    throw new Error('Duplicate Redemption fulfillment');
+                }
+
+            }
+        });
+        return true;
+    }
+
+
+    completeRedemption = async (txb: bitcoin.Psbt) => {
         txb.signAllInputs(this.watcherKey);
         txb.finalizeAllInputs();
         const tx = txb.extractTransaction();
@@ -218,7 +266,7 @@ export class BitcoinWatcher{
 
     }
 
-    isRedemptionConfirmed = async (txid: string) => {
+    isTxConfirmed = async (txid: string) => {
         const tx = await this.client.command('gettransaction', txid);
         return tx.confirmations > this.config.Finality;
     }
@@ -287,9 +335,7 @@ export class BitcoinWatcher{
         let totalInputValue = 0;
         let totalOutputValue = 0;
         txb.data.inputs.forEach((input) => {
-            console.log(input, input.witnessUtxo.script.toString('hex'), this.utxos[1].utxos[0].scriptPubKey)
-            console.log(input.witnessScript.toString('hex'), this.getRedeemScript(1))
-            console.log(validScipts.includes(input.witnessScript.toString('hex')))
+
             if(validScipts.includes(input.witnessScript.toString('hex')) === false) throw new Error('Invalid consolidation transaction Input');
 
             totalInputValue += input.witnessUtxo.value;
@@ -311,20 +357,6 @@ export class BitcoinWatcher{
         txb.signAllInputs(this.watcherKey);
 
         return txb.toHex();
-    }
-
-    combine(psbt1: bitcoin.Psbt, psbt2: string) {
-        const txb1 = psbt1
-        const txb2 = bitcoin.Psbt.fromHex(psbt2, {network : bitcoin.networks[this.config.network] });
-        const txb = txb1.combine(txb2);
-        return txb;
-    }
-
-    consolidateAndSubmit(txb: bitcoin.Psbt) {
-        txb.finalizeAllInputs();
-        const tx = txb.extractTransaction();
-        const txHex = tx.toHex();
-        this.client.sendRawTransaction(txHex);
     }
 
     async createConsolidationTransaction(indexs: number[]) : Promise< bitcoin.Psbt>{
@@ -399,7 +431,7 @@ export class BitcoinWatcher{
         }
     }
 
-
+    
 
     refundIndex = (index: number) => {
 
