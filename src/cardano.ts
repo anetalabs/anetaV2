@@ -77,7 +77,7 @@ export class CardanoWatcher{
     }
 
 
-    async signBurn(tx : {tx: Lucid.TxComplete, txHash: string, index: number}){
+    async signBurn(tx : {tx: Lucid.TxComplete, txHash: string, index: number, burnTx: string}){
         const [txDetails, cTx] = this.decodeTransaction(tx.tx);
         let requestTxHash = txDetails.inputs[0].transaction_id;
         let requestIndex = Number(txDetails.inputs[0].index);
@@ -287,9 +287,9 @@ export class CardanoWatcher{
             const [txDetails, cTx] = this.decodeTransaction(tx.tx);
             let requestTxHash = txDetails.inputs[0].transaction_id;
             let requestIndex = Number(txDetails.inputs[0].index);
-            if(! await this.checkMedatada(txDetails.auxiliary_data_hash, tx.metadata)) return;
+            if(! await this.checkMedatada(txDetails.auxiliary_data_hash, tx.metadata)) throw new Error("Invalid Metadata");
             const requestListing = this.mintQueue.find((request) => request.txHash === requestTxHash && request.index === requestIndex);
-            if(!requestListing) return;
+            if(!requestListing)  throw new Error("Request not found in mint queue");
 
             const openRequests =await this.lucid.provider.getUtxos(this.address);
             const request = openRequests.find( (request) => request.txHash === requestTxHash  && request.outputIndex ===  requestIndex) as mintRequest;
@@ -606,6 +606,21 @@ export class CardanoWatcher{
         const confirmations = tip.data.height - tx.height;
         return  confirmations>= this.config.finality;
     }
+
+    async getBurnByRedemptionTx(redemptionTx: string){
+        console.log("Checking Burn", redemptionTx);
+       // const hash = await this.(redemptionTx);
+       const metadata = await hash(redemptionTx);
+        const tx = await this.mongo.collection("burn").findOne({ redemptionTx: metadata});
+        const tip = await this.getTip();
+        if(!tx) return false;
+        const confirmations = tip.data.height - tx.height;
+        if(confirmations>= this.config.finality){
+            return tx;
+        }else{
+            return false;
+        }
+    }
     
     async handleNewBlock(block: CardanoBlock) : Promise<Boolean>{
         let tip = await this.mongo.collection("height").findOne({type: "top"});
@@ -664,8 +679,8 @@ export class CardanoWatcher{
                 
                 else if(asset.mintCoin < 0n){
                     console.log("Burning Transaction", tx);
-                    const redermptionTransaction = tx.auxiliary.metadata[0]?.value.metadatum.value; 
-                    this.mongo.collection("burn").insertOne({tx: tx, txHash: toHexString( tx.hash),block: block.header.hash, height: block.header.height, redermptionTransaction });
+                    const redemptionTx = tx.auxiliary.metadata[0]?.value.metadatum.value; 
+                    this.mongo.collection("burn").insertOne({tx: tx, txHash: toHexString( tx.hash),block: block.header.hash, height: block.header.height, redemptionTx });
                 }
             }
         }));

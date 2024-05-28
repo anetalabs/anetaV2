@@ -327,7 +327,31 @@ export class BitcoinWatcher{
         }
     }
 
-    signConsolidationTransaction(txHex: string) {
+    async signRedemptionTransaction(txHex: string) {
+        const txb = bitcoin.Psbt.fromHex(txHex, {network : bitcoin.networks[this.config.network] });
+        const burnTx = await ADAWatcher.getBurnByRedemptionTx(txHex);
+        const validScipts = this.utxos.map((address) => this.getRedeemScript(address.index));
+        // check if the transaction is a redemption transaction and if it is in the utxos 
+        let totalInputValue = 0;
+        let totalOutputValue = 0;
+        txb.data.inputs.forEach((input) => {
+            if(validScipts.includes(input.witnessScript.toString('hex')) === false) throw new Error('Invalid redemption transaction Input');
+            totalInputValue += input.witnessUtxo.value;
+        });
+
+        txb.txOutputs.forEach((output) => {
+            totalOutputValue += output.value;
+            if (output.address !== this.getVaultAddress()) throw new Error('Invalid redemption transaction Output');
+        });
+
+        if (totalInputValue !== totalOutputValue) throw new Error('Invalid redemption transaction Output');
+
+        txb.signAllInputs(this.watcherKey);
+        return txb.toHex();
+    
+    }
+
+    signConsolidationTransaction(txHex) {
         console.log("signing consolidation transaction" , txHex)
         const txb = bitcoin.Psbt.fromHex(txHex, {network : bitcoin.networks[this.config.network] });
         const validScipts = this.consolidationQue.map((index) => this.getRedeemScript(index));
@@ -344,9 +368,7 @@ export class BitcoinWatcher{
 
         console.log("totalInputValue", totalInputValue)
 
-        console.log("txb.data.outputs", txb.data.outputs)
         txb.txOutputs.forEach((output) => {
-            console.log("output", output.address, this.getVaultAddress())
             totalOutputValue += output.value;
             if (output.address !== this.getVaultAddress()) throw new Error('Invalid consolidation transaction Output');
         });
@@ -354,7 +376,10 @@ export class BitcoinWatcher{
     
         console.log("totalOutputValue", totalOutputValue)
         console.log("fee", totalInputValue - totalOutputValue)
-        txb.signAllInputs(this.watcherKey);
+        txb.data.inputs.forEach((input, index) => 
+            txb.signInput(index, this.watcherKey)
+        );
+       // txb.signAllInputs(this.watcherKey);
 
         return txb.toHex();
     }

@@ -400,12 +400,27 @@ export class Communicator {
             
         });
 
-        socket.on('btcSignatureRequest', async (data : string ) => {
+        socket.on('btcSignatureRequest', async (tx: { tx : string , type: string  }) => {
             // if not leader, ignore
             if(this.peers[index].state !== NodeStatus.Leader || this.peers[this.Iam].state !== NodeStatus.Follower) return;
-            const signature = BTCWatcher.signConsolidationTransaction(data);
-            console.log("seding signature", signature);
-            this.peers[this.getLeader()].outgoingConnection.emit('btcSignatureResponse', signature);
+            try{
+                switch (tx.type) {
+                    case "consolidation":
+                        console.log("signing consolidation transaction outer: ",tx);
+                        const signature = BTCWatcher.signConsolidationTransaction(tx.tx);
+                        console.log("seding signature", signature);
+                        this.peers[this.getLeader()].outgoingConnection.emit('btcSignatureResponse', signature);
+                        break;
+                    case "redemption":
+                        const signature2 = BTCWatcher.signRedemptionTransaction(tx.tx);
+                        console.log("seding signature", signature2);
+                        this.peers[this.getLeader()].outgoingConnection.emit('btcSignatureResponse', signature2);
+                        break;
+                
+                    }
+            }catch(err){
+                console.log("Error signing transaction", err);
+            }
 
         });
 
@@ -474,7 +489,7 @@ export class Communicator {
 
             this.btcTransactionsBuffer.forEach((tx) => {
                 if(node.state === NodeStatus.Follower && node.outgoingConnection && tx.status === "pending"){
-                    node.outgoingConnection.emit('btcSignatureRequest', tx.tx.toHex());
+                    node.outgoingConnection.emit('btcSignatureRequest', { tx : tx.tx.toHex(), type: tx.type});
                 }
             });
         });
