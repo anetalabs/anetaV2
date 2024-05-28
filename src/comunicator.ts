@@ -8,6 +8,7 @@ import * as Lucid  from 'lucid-cardano';
 import crypto from 'crypto';
 import { CardanoWatcher } from './cardano.js';
 import { BitcoinWatcher } from './bitcoin.js';
+import { txId } from './helpers.js';
 
 const HEARTBEAT = 5000;
 const ELECTION_TIMEOUT = 5;
@@ -48,15 +49,6 @@ export class Communicator {
     constructor(topology: topology, secrets: secretsConfig , port: number) {
         this.heartbeat = this.heartbeat.bind(this);
 
-        emitter.on("signatureResponse", (data) => {
-            //send the signature to the leader
-            console.log('Signature response received', data);
-            const leader = this.peers[this.getLeader()];
-            if(leader && leader.outgoingConnection){
-                leader.outgoingConnection.emit('signatureResponse', data);
-            }
-            
-        }   );
 
         this.topology = topology;
         (async () => {
@@ -196,6 +188,17 @@ export class Communicator {
         }
     }
 
+    signatureResponse(data: {txId: string, signature: string}) {
+       
+            const leader = this.peers[this.getLeader()];
+            if(leader && leader.outgoingConnection){
+                console.log('Sending signature response:', data);
+                leader.outgoingConnection.emit('signatureResponse', data);
+            }
+            
+      
+    }
+
     getQuorum() : string[]{
      // get the n nodes with the oldest connection time
         const quorum = this.peers
@@ -214,12 +217,13 @@ export class Communicator {
     }
 
     cardanoTxToComplete(data: pendingCardanoTransaction) {
-        if(this.peers[this.Iam].state === NodeStatus.Leader  && !this.transactionsBuffer.find((tx) => tx.txHash === data.txHash && tx.index === data.index) ){
+        if(this.peers[this.Iam].state === NodeStatus.Leader  && !this.transactionsBuffer.find((tx) => tx.txId === data.txId) ){
             const tx = data
             tx.status = "pending"
            this.transactionsBuffer.push(tx);
            console.log('Transaction to complete:', data);
        }
+
     }
 
     bitcoinTxToComplete(tx: pendingBitcoinTransaction) {
@@ -373,20 +377,26 @@ export class Communicator {
 
         socket.on('signatureRequest', async (data) => {
             // if not leader, ignore
+            try{
             if(this.peers[index].state !== NodeStatus.Leader || this.peers[this.Iam].state !== NodeStatus.Follower) return;
           
                 switch (data.type) {
                     case "rejection":
-                        ADAWatcher.signReject(data);
+                        await ADAWatcher.signReject(data);
                         break;
                     case "mint":
-                        ADAWatcher.signMint(data);
+                        await ADAWatcher.signMint(data);
+                        break;
+                    case "burn":
+                        await ADAWatcher.signBurn(data);
                         break;
                 
                     default:
                         console.log("Unknown Signature Request");
                 }    
-        
+            }catch(err){
+                console.log("Error signing transaction", err);
+            }
             
         });
 
@@ -422,7 +432,12 @@ export class Communicator {
             // if not leader, ignore
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
 
-            const pendingTx = this.transactionsBuffer.find((tx) => tx.txHash === data.txHash && tx.index === data.index)
+            const pendingTx = this.transactionsBuffer.find((tx) => tx.txId === data.txId);
+            const signatureInfo = ADAWatcher.decodeSignature(data.signature);
+            if (!signatureInfo.witness.vkeys().get(0).vkey().public_key().verify( Buffer.from(pendingTx.tx.toHash(), 'hex'), signatureInfo.witness.vkeys().get(0).signature())){
+                console.log("Invalid signature");
+                return;
+            }
             pendingTx.signatures.push(data.signature.toString());
             if(pendingTx.signatures.length >= this.topology.m){
                 const completedTx = (await pendingTx.tx.assemble(pendingTx.signatures).complete())
@@ -453,7 +468,7 @@ export class Communicator {
                 const [decodedTx , _ ] = ADAWatcher.decodeTransaction(tx.tx)
 
                 if(node.state === NodeStatus.Follower && node.outgoingConnection && decodedTx.required_signers.some((signature : string) => signature === node.keyHash) && tx.status === "pending"){
-                    node.outgoingConnection.emit('signatureRequest', {type: tx.type ,txHash: tx.txHash, index: tx.index , signature: tx.signatures[0], tx: tx.tx.toString(), metadata: tx.metadata});
+                    node.outgoingConnection.emit('signatureRequest', {type: tx.type , txId: tx.txId, signature: tx.signatures[0], tx: tx.tx.toString(), metadata: tx.metadata});
                 }
             });
 

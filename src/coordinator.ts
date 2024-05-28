@@ -103,18 +103,20 @@ export class Coordinator{
         this.redemptionState.currentTransaction = currentTransaction;
         this.redemptionState.state = redemptionState.forged;
         this.redemptionState.requestsFilling = redemptionRequests;
-        this.redemptionState.burningTransaction = await ADAWatcher.burn(redemptionRequests, this.redemptionState.currentTransaction.toHex());
         // store the transaction in the database
         this.redemptionDb.findOneAndUpdate({}, { $set: this.redemptionState }, { upsert: true });
-
+        
+    }
+    getConfig(){    
+        return this.config;
     }
 
     calculatePaymentAmount(request: mintRequest , utxoNumber : number = 1  ){
-        return request.decodedDatum.amount + this.config.fixedFee + this.config.margin * request.decodedDatum.amount + this.config.utxoCharge * (utxoNumber - 1) ; 
+        return Number(request.decodedDatum.amount) + this.config.fixedFee + this.config.margin *  Number(request.decodedDatum.amount) + this.config.utxoCharge * (utxoNumber - 1) ; 
     }
 
     calculateRedemptionAmount(request: redemptionRequest){
-        return request.decodedDatum.amount  - this.config.fixedFee - this.config.margin * request.decodedDatum.amount;
+        return  Number(request.decodedDatum.amount)  - this.config.fixedFee - this.config.margin *  Number(request.decodedDatum.amount);
     }
 
     getPaymentPaths(){  
@@ -140,16 +142,24 @@ export class Coordinator{
                 this.redemptionDb.findOneAndUpdate({}, {$set: this.redemptionState}, {upsert: true});
             }   
         }
-
+        
         if(this.redemptionState.state === redemptionState.burned){
             this.redemptionState.redemptionTx = await BTCWatcher.completeRedemption(this.redemptionState.currentTransaction);
             this.redemptionDb.findOneAndUpdate({}, {$set: this.redemptionState}, {upsert: true});
-
+            
         }
     }
-
-    async checkPayments(){
  
+    async checkRedemption(){
+        if(this.redemptionState.state === redemptionState.burned){
+            if(await BTCWatcher.isTxConfirmed(this.redemptionState.redemptionTx)){
+                this.redemptionState.state = redemptionState.completed;
+                this.redemptionDb.findOneAndUpdate({}, {$set: this.redemptionState}, {upsert: true});
+            }
+        }
+    }
+    
+    async checkPayments(){
         this.paymentPaths.forEach((path, index) => {
             let payment = BTCWatcher.getUtxosByIndex(index);
             if(path.state <= state.completed && payment.length > 0){
@@ -191,14 +201,6 @@ export class Coordinator{
         
     }
 
-    async checkRedemption(){
-        if(this.redemptionState.state === redemptionState.burned){
-            if(await BTCWatcher.isTxConfirmed(this.redemptionState.redemptionTx)){
-                this.redemptionState.state = redemptionState.completed;
-                this.redemptionDb.findOneAndUpdate({}, {$set: this.redemptionState}, {upsert: true});
-            }
-        }
-    }
 
     async consolidatePayments(){
         

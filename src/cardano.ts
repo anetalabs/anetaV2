@@ -1,5 +1,6 @@
 import { Db } from "mongodb";
 import { toHexString, txId, hash } from "./helpers.js";
+import { Psbt } from "bitcoinjs-lib";
 import pkg from 'blakejs';
 const { blake2bHex } = pkg;
 import * as Lucid  from 'lucid-cardano'
@@ -8,7 +9,7 @@ import {cardanoConfig, secretsConfig, mintRequest , MintRequestSchema, Redemptio
 import {emitter}  from "./coordinator.js";
 import axios from "axios";
 import { getDb } from "./db.js";
-import { BTCWatcher, communicator, coordinator } from "./index.js";
+import { ADAWatcher, BTCWatcher, communicator, coordinator } from "./index.js";
 import { json } from "stream/consumers";
 const METADATA_TAG = 85471236584;
 
@@ -25,7 +26,7 @@ export class CardanoWatcher{
     private config: cardanoConfig;
     private rejectionQueue: {txHash: string, index: number , targetAddress : string , completed: Date | undefined , created: Date}[] = [];
     private mintQueue: {txHash: string, index: number , targetAddress : string , completed: Date | undefined , created: Date}[] = [];
-    private burnQueue: {txHash: string, index: number , targetAddress : string , completed: Date | undefined , created: Date}[] = [];
+    private burnQueue: {txHash: string, index: number , completed: Date | undefined , created: Date }[] = [];
 
     constructor(config: cardanoConfig, secrets: secretsConfig ){
 
@@ -76,51 +77,91 @@ export class CardanoWatcher{
     }
 
 
+    async signBurn(tx : {tx: Lucid.TxComplete, txHash: string, index: number}){
+        const [txDetails, cTx] = this.decodeTransaction(tx.tx);
+        let requestTxHash = txDetails.inputs[0].transaction_id;
+        let requestIndex = Number(txDetails.inputs[0].index);
+        const requestListing = this.burnQueue.find((request) => request.txHash === requestTxHash && request.index === requestIndex);
+        if(!requestListing) throw new Error("Request not found in burn queue");
+        const amIaSigner = txDetails.required_signers.some(async (signature : string) => signature === this.myKeyHash);
+        if(!amIaSigner) throw new Error("Not a signer for this request");
+        const mintClean = txDetails.mint === null;
+        let inputsClean = true;
+        txDetails.inputs.foreach( (input) => {
+            if(input.transaction_id !== requestTxHash && input.index !== requestIndex){
+                inputsClean = false;
+            }
+        });
+
+        txDetails.inputs.forEach( (input) => {
+        
+        });
+
+        const outputsClean = txDetails.outputs.length === 1 && txDetails.outputs[0].address ===  coordinator.getConfig().adminAddress;
+        const withdrawalsClean = txDetails.withdrawals === null;
+        console.log(mintClean, inputsClean, outputsClean, withdrawalsClean , txDetails, !requestListing.completed)
+        if (!requestListing.completed && mintClean && inputsClean && outputsClean && withdrawalsClean){
+            const signature =  (await this.lucid.wallet.signTx(cTx)).to_bytes().reduce((str, byte) => str + byte.toString(16).padStart(2, '0'), '');
+            console.log("Signature", signature);
+            communicator.signatureResponse({txId: tx.txHash , signature});
+            //update the mint queue to reflect that the request has been signed
+            requestListing.completed = new Date();
+        }
+
+
+    }
+
     async burn(requests: redemptionRequest[], redemptionTx: string){
         try{
-            
-            // check that we are synced with the tip
-            const MultisigDescriptorSchema = Lucid.Data.Object({ 
-                list: Lucid.Data.Array(Lucid.Data.Bytes()),
-                m: Lucid.Data.Integer(),
-                });
+            if(communicator.amILeader()){
+                // check that we are synced with the tip
+                const MultisigDescriptorSchema = Lucid.Data.Object({ 
+                    list: Lucid.Data.Array(Lucid.Data.Bytes()),
+                    m: Lucid.Data.Integer(),
+                    });
+                    
+                const metadata = await hash(redemptionTx);
+
+                type MultisigDescriptor = Lucid.Data.Static<typeof MultisigDescriptorSchema>;
+                const MultisigDescriptor = MultisigDescriptorSchema as unknown as MultisigDescriptor; 
                 
-            const metadata = await hash(redemptionTx);
-
-            type MultisigDescriptor = Lucid.Data.Static<typeof MultisigDescriptorSchema>;
-            const MultisigDescriptor = MultisigDescriptorSchema as unknown as MultisigDescriptor; 
+                console.log("Config UTxO",this.configUtxo)
+                const multisig = Lucid.Data.from(this.configUtxo.datum, MultisigDescriptor);
+                console.log(multisig);
+                const openRequests =await this.lucid.provider.getUtxos(this.address);
+                const request = requests;
+                console.log(request)
+                
+                const spendingTx =  this.lucid.newTx().attachSpendingValidator(this.mintingScript).collectFrom(requests, Lucid.Data.void()).readFrom([this.configUtxo])
+        
+                
+                const signersTx = this.lucid.newTx().addSigner(await this.lucid.wallet.address())
+                const referenceInput = this.lucid.newTx().readFrom([this.configUtxo]);
+                const assets = {} 
+                assets[this.cBTCPolicy + this.cBtcHex] = -requests.reduce((acc, request) => acc + Number(request.assets[this.cBTCPolicy +  this.cBtcHex]) , 0);
+                const mintTx = this.lucid.newTx().attachMintingPolicy(this.mintingScript).mintAssets(assets, Lucid.Data.void()).attachMetadata(METADATA_TAG, metadata);
+                
             
-            console.log("Config UTxO",this.configUtxo)
-            const multisig = Lucid.Data.from(this.configUtxo.datum, MultisigDescriptor);
-            console.log(multisig);
-            const openRequests =await this.lucid.provider.getUtxos(this.address);
-            const request = requests;
-            console.log(request)
-            
-            const spendingTx =  this.lucid.newTx().attachSpendingValidator(this.mintingScript).collectFrom(requests, Lucid.Data.void()).readFrom([this.configUtxo])
-    
-            
-            const signersTx = this.lucid.newTx().addSigner(await this.lucid.wallet.address())
-            const referenceInput = this.lucid.newTx().readFrom([this.configUtxo]);
-            const assets = {} 
-            assets[this.cBTCPolicy + this.cBtcHex] = -requests.reduce((acc, request) => acc + Number(request.assets[this.cBTCPolicy +  this.cBtcHex]) , 0);
-            const mintTx = this.lucid.newTx().attachMintingPolicy(this.mintingScript).mintAssets(assets, Lucid.Data.void()).attachMetadata(METADATA_TAG, metadata);
-            
-          
-            const finalTx = this.lucid.newTx()
-                                      .compose(signersTx)
-                                      .compose(spendingTx)
-                                      .compose(mintTx)
-                                      .compose(referenceInput);
-                                    
-    
-            const completedTx = await finalTx.complete({change: { address: "addr_test1qrlmv3gjf253v49u8v5psxzwtlf6uljc5xf3a24ehfzcyz32ptyyevm796lgrkz2t5vrx3snmmsfh0ntc333mqf6eagstyc95m" },  coinSelection : false});
-            const signatures = await  completedTx.partialSign();
-            const signedTx = await completedTx.assemble([signatures]).complete();
-            console.log("signature", signatures);
-            console.log("completedTx", signedTx.toString());
-            return await signedTx.submit();    
-
+                const finalTx = this.lucid.newTx()
+                                        .compose(signersTx)
+                                        .compose(spendingTx)
+                                        .compose(mintTx)
+                                        .compose(referenceInput);
+                                        
+        
+                const completedTx = await finalTx.complete({change: { address: coordinator.getConfig().adminAddress },  coinSelection : false});
+                const signatures = await  completedTx.partialSign();
+                // const signedTx = await completedTx.assemble([signatures]).complete();
+                // console.log("signature", signatures);
+                // console.log("completedTx", signedTx.toString());
+                // return await signedTx.submit();    
+                communicator.cardanoTxToComplete({type: "burn", txId: completedTx.toHash(),  signatures: [signatures] , tx: completedTx, status: "pending", metadata, redemptionTx});
+                
+            }else{
+                requests.forEach(request => {
+                    this.burnQueue.push({txHash: request.txHash, index: request.outputIndex , completed : undefined, created: new Date()} );                
+                });
+            }
         }catch(e){
                 console.log(e);
             }
@@ -136,7 +177,7 @@ export class CardanoWatcher{
         
     }
     
-    decodeSignature(signature: string){
+    decodeSignature(signature: string) : {signature: string, signer: string, witness: Lucid.C.TransactionWitnessSet} {
     try{
         const uint8Array = new Uint8Array(signature.match(/.{2}/g).map(byte => parseInt(byte, 16)));
         const witness  =  Lucid.C.TransactionWitnessSet.from_bytes(uint8Array)
@@ -152,16 +193,18 @@ export class CardanoWatcher{
         return request.txHash + request.outputIndex.toString();
     }
     
-    async signReject(tx : {tx: Lucid.TxComplete, txHash: string, index: number}){
+    async signReject(tx : {tx: Lucid.TxComplete , txId: string}){
         const [txDetails, cTx] = this.decodeTransaction(tx.tx);
-        console.log("txDetails",txDetails)
         // check the rejection queue for the request
-        const requestListing = this.rejectionQueue.find((request) => request.txHash === tx.txHash && request.index === tx.index);
-        if(!requestListing) return;
+        let requestTxHash = txDetails.inputs[0].transaction_id;
+        let requestIndex = Number(txDetails.inputs[0].index);
+        console.log("Signing Rejection", requestTxHash, requestIndex, txDetails, this.rejectionQueue);
+        const requestListing = this.rejectionQueue.find((request) => request.txHash === requestTxHash && request.index === requestIndex);
+        if(!requestListing) throw new Error("Request not found in rejection queue");
         const amIaSigner = txDetails.required_signers.some(async (signature : string) => signature === this.myKeyHash);
-        if(!amIaSigner) return;
+        if(!amIaSigner) throw new Error("Not a signer for this request");
         const mintClean = txDetails.mint === null;
-        const inputsClean = (txDetails.inputs.length === 1 && txDetails.inputs[0].transaction_id === tx.txHash && Number(txDetails.inputs[0].index) === tx.index); 
+        const inputsClean = (txDetails.inputs.length === 1 && txDetails.inputs[0].transaction_id === requestTxHash && Number(txDetails.inputs[0].index) === requestIndex); 
         const outputsClean = txDetails.outputs.length === 1 && txDetails.outputs[0].address === requestListing.targetAddress ;
         const withdrawalsClean = txDetails.withdrawals === null;
         
@@ -169,7 +212,7 @@ export class CardanoWatcher{
         if (requestListing && mintClean && inputsClean && outputsClean && withdrawalsClean){
             const signature =  (await this.lucid.wallet.signTx(cTx)).to_bytes().reduce((str, byte) => str + byte.toString(16).padStart(2, '0'), '');
             console.log("Signature", signature);
-            emitter.emit("signatureResponse", {txHash: tx.txHash, index: tx.index, signature});
+            communicator.signatureResponse({txId : tx.txId , signature});
             //update the rejection queue to reflect that the request has been signed
             requestListing.completed = new Date();
             
@@ -185,6 +228,8 @@ export class CardanoWatcher{
                     list: Lucid.Data.Array(Lucid.Data.Bytes()),
                     m: Lucid.Data.Integer(),
                 });
+
+                
                 
                 
                 type MultisigDescriptor = Lucid.Data.Static<typeof MultisigDescriptorSchema>;
@@ -213,7 +258,7 @@ export class CardanoWatcher{
                 try{
                     const tx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false});
                     const signature = await  tx.partialSign();
-                    communicator.cardanoTxToComplete({type: "rejection", txHash, index, signatures: [signature] , tx, status: "pending"});
+                    communicator.cardanoTxToComplete({type: "rejection", txId : tx.toHash(), signatures: [signature] , tx, status: "pending"});
                 }catch(e){
                     console.log("transaction building error:", e);
                 }
@@ -237,16 +282,17 @@ export class CardanoWatcher{
 
     
 
-    async signMint(tx : {tx: Lucid.TxComplete, txHash: string, index: number, metadata: [string, number][]}){
+    async signMint(tx : {tx: Lucid.TxComplete, txId : string , metadata: [string, number][]}){
         try{
             const [txDetails, cTx] = this.decodeTransaction(tx.tx);
-            
+            let requestTxHash = txDetails.inputs[0].transaction_id;
+            let requestIndex = Number(txDetails.inputs[0].index);
             if(! await this.checkMedatada(txDetails.auxiliary_data_hash, tx.metadata)) return;
-            const requestListing = this.mintQueue.find((request) => request.txHash === tx.txHash && request.index === tx.index);
+            const requestListing = this.mintQueue.find((request) => request.txHash === requestTxHash && request.index === requestIndex);
             if(!requestListing) return;
 
             const openRequests =await this.lucid.provider.getUtxos(this.address);
-            const request = openRequests.find( (request) => request.txHash === tx.txHash && request.outputIndex === tx.index) as mintRequest;
+            const request = openRequests.find( (request) => request.txHash === requestTxHash  && request.outputIndex ===  requestIndex) as mintRequest;
             request.decodedDatum = this.decodeDatum(request.datum);
             const utxos = BTCWatcher.getUtxosByIndex(request.decodedDatum .path)
 
@@ -267,16 +313,15 @@ export class CardanoWatcher{
             if(!amIaSigner) return;
 
             const mintClean = Object.keys(txDetails.mint).length === 1  &&   Object.keys(txDetails.mint[this.cBTCPolicy]).length === 1 &&  Number(txDetails.mint[this.cBTCPolicy][this.cBtcHex]) === Number( (request.decodedDatum.amount)) ; //metadata.amount;
-            const inputsClean = (txDetails.inputs.length === 1 && txDetails.inputs[0].transaction_id === tx.txHash && Number(txDetails.inputs[0].index) === tx.index);
+            const inputsClean = (txDetails.inputs.length === 1 && txDetails.inputs[0].transaction_id === requestTxHash && Number(txDetails.inputs[0].index) ===  requestIndex);
             const outputsClean = txDetails.outputs.length === 1 && txDetails.outputs[0].address === requestListing.targetAddress ;
             const withdrawalsClean = txDetails.withdrawals === null;
-        // const metadataClean = txDetails.metadata.length === 1 && txDetails.metadata[0].key === METADATA_TAG;
-            const paymentComplete = Number(total) >= Number( coordinator.calculatePaymentAmount(request, utxos.length));
-            console.log(mintClean, inputsClean, outputsClean, withdrawalsClean , !requestListing.completed, paymentComplete,request.decodedDatum.amount , total)
+            const paymentComplete = Number(BTCWatcher.btcToSat(total)) >= Number( coordinator.calculatePaymentAmount(request, utxos.length));
+            console.log(mintClean, inputsClean, outputsClean, withdrawalsClean , !requestListing.completed,  coordinator.calculatePaymentAmount(request, utxos.length), paymentComplete,request.decodedDatum.amount , total)
             if (!requestListing.completed && mintClean && inputsClean && outputsClean && withdrawalsClean && paymentComplete ){
                 const signature =  (await this.lucid.wallet.signTx(cTx)).to_bytes().reduce((str, byte) => str + byte.toString(16).padStart(2, '0'), '');
                 console.log("Signature", signature);
-                emitter.emit("signatureResponse", {txHash: tx.txHash, index: tx.index, signature});
+                communicator.signatureResponse({txId: tx.txId , signature});
                 //update the mint queue to reflect that the request has been signed
                 requestListing.completed = new Date();
             }
@@ -341,7 +386,7 @@ export class CardanoWatcher{
             try{
                 const tx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false});
                 const signature = await  tx.partialSign();
-                communicator.cardanoTxToComplete( {type: "mint", txHash, index, signatures: [signature] , tx , status: "pending", metadata});
+                communicator.cardanoTxToComplete( {type: "mint", txId : tx.toHash(), signatures: [signature] , tx , status: "pending", metadata});
             }catch(e){
                 console.log("transaction building error:", e);
             }

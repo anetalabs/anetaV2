@@ -44,11 +44,11 @@ export type pendingBitcoinTransaction = {
 export type pendingCardanoTransaction = {
     type: "mint" | "burn" | "rejection",
     status: "pending" | "completed" ,
-    txHash: string,
-    index: number,
+    txId: string,
     signatures: string[],
     tx: Lucid.TxComplete,
-    metadata? : any
+    metadata? : any,
+    redemptionTx?: string
 }
 
 export enum NodeStatus {
@@ -68,6 +68,7 @@ export type protocolConfig = {
     consolidationThreshold : number
     minMint: number
     minRedemption: number
+    adminAddress: string
 }
 
 export type cardanoConfig = {
