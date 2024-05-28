@@ -9,7 +9,7 @@ import {BIP32Factory} from 'bip32';
 import { emitter } from "./coordinator.js";
 import { utxo } from "./types.js";
 import { hexToString } from "./helpers.js";
-import { ADAWatcher, communicator } from "./index.js";
+import { ADAWatcher, communicator, coordinator } from "./index.js";
 
 const ECPair =  ECPairFactory(ecc);
 export const utxoEventEmitter = new EventEmitter();
@@ -244,6 +244,8 @@ export class BitcoinWatcher{
                 const request = redemptionRequests.find((request) => (request.decodedDatum.destinationAddress === output.address) && ( Number(request.assets[ADAWatcher.getCBtcId()]) === output.value));
                 if(request === undefined) throw new Error('Invalid consolidation transaction Output');    
                 
+                if( output.value !== coordinator.calculateRedemptionAmount(request)) throw new Error('Invalid consolidation transaction Output');
+
                 if(requestMap.has(request.txHash + request.outputIndex)){
                      requestMap.delete(request.txHash + request.outputIndex)
                 }else{
@@ -351,7 +353,7 @@ export class BitcoinWatcher{
     
     }
 
-    signConsolidationTransaction(txHex) {
+    signConsolidationTransaction(txHex : string) {
         console.log("signing consolidation transaction" , txHex)
         const txb = bitcoin.Psbt.fromHex(txHex, {network : bitcoin.networks[this.config.network] });
         const validScipts = this.consolidationQue.map((index) => this.getRedeemScript(index));
@@ -424,14 +426,14 @@ export class BitcoinWatcher{
             if (total === 0) throw new Error('No UTXOs to redeem');
             const feerate =   await this.getFee() ;
         
-            const fee = Math.round( 100_000 * feerate  * txSize) ; //round to 8 decimal places 
+            const fee = Math.round( 100_000 * feerate  * txSize * coordinator.getConfig().btcNetworkFeeMultiplyer) ; //round to 8 decimal places 
             const amount = total - fee;
             console.log("total", total, "fee", fee, "amount", amount, "txSize", txSize, "feerate", feerate);  
             console.log({address: this.getVaultAddress(), value: amount });
             txb.addOutput({address: this.getVaultAddress(), value: amount });
             txb.signAllInputs(this.watcherKey);
 
-            // const txHex = txb.toHex();
+           const txHex = txb.toHex();
 
             // const signatures = txb.data.inputs.map((input) => input.partialSig[0].signature.toString('hex'));
             return txb;

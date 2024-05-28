@@ -98,15 +98,23 @@ export class Coordinator{
         
     }
 
-    private async newRedemption(currentTransaction: Psbt ,redemptionRequests: redemptionRequest[]) {
-        BTCWatcher.checkRedemptionTx(currentTransaction, redemptionRequests);
+    async newRedemption(currentTransaction: Psbt ,redemptionRequests: redemptionRequest[]) {
+        try {
+        const redemptionOk = BTCWatcher.checkRedemptionTx(currentTransaction, redemptionRequests);
+        if (!redemptionOk) throw new Error("Redemption transaction is not valid");
+        if (this.redemptionState.state !== redemptionState.open) throw new Error("Redemption already in progress");
+        ADAWatcher.burn(redemptionRequests, currentTransaction.toHex());
         this.redemptionState.currentTransaction = currentTransaction;
         this.redemptionState.state = redemptionState.forged;
         this.redemptionState.requestsFilling = redemptionRequests;
         // store the transaction in the database
+        communicator.broadcast("newRedemption", {currentTransaction, redemptionRequests});
         this.redemptionDb.findOneAndUpdate({}, { $set: this.redemptionState }, { upsert: true });
-        
+        }catch(e){
+            console.log("Error in new redemption", e);
+        }
     }
+
     getConfig(){    
         return this.config;
     }
@@ -196,9 +204,7 @@ export class Coordinator{
             }
             
         });    
-
         this.consolidatePayments();
-        
     }
 
 

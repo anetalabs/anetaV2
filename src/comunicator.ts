@@ -1,4 +1,4 @@
-import { ADAWatcher, BTCWatcher } from './index.js';
+import { ADAWatcher, BTCWatcher, coordinator } from './index.js';
 import { emitter } from './coordinator.js';
 import { topology, secretsConfig, pendingCardanoTransaction, pendingBitcoinTransaction, NodeStatus } from './types.js';
 import { Server, Socket as ServerSocket } from 'socket.io';
@@ -431,7 +431,7 @@ export class Communicator {
             this.btcTransactionsBuffer.forEach((tx) => {
                 try{
                     tx.tx = BTCWatcher.combine(tx.tx,data)
-                    if(tx.tx.data.inputs.length >= this.topology.m){
+                    if(tx.tx.data.inputs[0].partialSig.length >= this.topology.m){
                         tx.status = "completed";
                         BTCWatcher.completeAndSubmit(tx.tx);
                     }
@@ -440,7 +440,7 @@ export class Communicator {
                 }
 
             });
-             });
+        });
 
 
         socket.on('signatureResponse',async (data) => {
@@ -459,6 +459,13 @@ export class Communicator {
                 ADAWatcher.submitTransaction(completedTx);
                 pendingTx.status = "completed";
             }
+        });
+
+        socket.on('newRedemption', async (data) => {
+            // if peer is not leader, ignore
+            if(this.peers[index].state !== NodeStatus.Leader ) return;
+            coordinator.newRedemption(data.currentTransaction, data.redemptionRequests);
+            
         });
         
         socket.on('data', (data) => {
@@ -545,7 +552,7 @@ export class Communicator {
 
     }
 
-    private broadcast(method, params= undefined) {
+    broadcast(method, params= undefined) {
         this.peers.forEach((node, index) => {
             if (node.outgoingConnection) {
                 node.outgoingConnection.emit(method, params);

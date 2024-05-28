@@ -61,6 +61,7 @@ export enum NodeStatus {
 }
 
 export type protocolConfig = {
+    btcNetworkFeeMultiplyer: number
     fixedFee: number,
     margin: number,
     utxoCharge: number
