@@ -61,6 +61,7 @@ export enum NodeStatus {
 }
 
 export type protocolConfig = {
+    redemptionMargin: number
     btcNetworkFeeMultiplyer: number
     fixedFee: number,
     margin: number,
@@ -116,7 +117,7 @@ export interface mintRequest extends Lucid.UTxO{
 }
 
 export interface redemptionRequest extends Lucid.UTxO{
-  decodedDatum: typeof RedemptionRequestSchema
+  decodedDatum: string
 }
 
 
@@ -130,17 +131,21 @@ export type utxo = {
 
 export interface redemptionController{
   state : redemptionState,
-  currentTransaction?: bitcoin.Psbt,
-  requestsFilling?: redemptionRequest[],
+  index: number,
+  currentTransaction?: string,
+  burnSignatures?: string[],
   burningTransaction?: string,
+  redemptionSignatures?: string,
+  redemptionTxId?: string,
   redemptionTx?: string
 }
 
 
-enum redemptionState{
+export enum redemptionState{
   open,
   forged,
   burned,
   completed,
+  finalized
 }
 

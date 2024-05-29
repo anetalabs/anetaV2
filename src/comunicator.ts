@@ -1,6 +1,6 @@
 import { ADAWatcher, BTCWatcher, coordinator } from './index.js';
 import { emitter } from './coordinator.js';
-import { topology, secretsConfig, pendingCardanoTransaction, pendingBitcoinTransaction, NodeStatus } from './types.js';
+import { topology, secretsConfig, pendingCardanoTransaction, pendingBitcoinTransaction, NodeStatus, redemptionController , redemptionState } from './types.js';
 import { Server, Socket as ServerSocket } from 'socket.io';
 import { Socket as ClientSocket } from 'socket.io-client';
 import  Client  from 'socket.io-client';
@@ -375,6 +375,14 @@ export class Communicator {
             this.vote(this.getLeader(), this.peers[index]);
         });
 
+        socket.on('queryRedemption', async () => {
+            if(this.peers[index].state !== NodeStatus.Leader) return;
+            const redemption = await coordinator.getRedemptionState();
+            if(redemption.state !== redemptionState.open ){
+                this.peers[index].outgoingConnection.emit('newRedemption', redemption);
+            }
+        });
+
         socket.on('signatureRequest', async (data) => {
             // if not leader, ignore
             try{
@@ -386,9 +394,6 @@ export class Communicator {
                         break;
                     case "mint":
                         await ADAWatcher.signMint(data);
-                        break;
-                    case "burn":
-                        await ADAWatcher.signBurn(data);
                         break;
                 
                     default:
@@ -411,12 +416,7 @@ export class Communicator {
                         console.log("seding signature", signature);
                         this.peers[this.getLeader()].outgoingConnection.emit('btcSignatureResponse', signature);
                         break;
-                    case "redemption":
-                        const signature2 = BTCWatcher.signRedemptionTransaction(tx.tx);
-                        console.log("seding signature", signature2);
-                        this.peers[this.getLeader()].outgoingConnection.emit('btcSignatureResponse', signature2);
-                        break;
-                
+      
                     }
             }catch(err){
                 console.log("Error signing transaction", err);
@@ -442,6 +442,34 @@ export class Communicator {
             });
         });
 
+        socket.on("updateRedemptionId", async (data) => {
+            if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
+          //  coordinator.updateRedemptionId(data);
+        });
+
+        socket.on('burnSignature' , async (signature) => {
+            // if not leader, ignore
+            try{
+            console.log("Burn signature received", signature)
+            if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
+            const burnTx =  ADAWatcher.txCompleteFromString(coordinator.getBurnTx());     
+            const signatureInfo = ADAWatcher.decodeSignature(signature);
+            if (!signatureInfo.witness.vkeys().get(0).vkey().public_key().verify( Buffer.from(burnTx.toHash(), 'hex'), signatureInfo.witness.vkeys().get(0).signature())){
+                console.log("Invalid signature");
+                return;
+            }
+            coordinator.newBurnSignature(signature);
+            }catch(err){
+                console.log("Error importing burn-transaction signature", err);
+            }
+        });
+
+        socket.on('newRedemSignature', async (signature) => {
+            // if not leader, ignore
+            if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
+            coordinator.newRedemptionSignature(signature);
+        });
+
 
         socket.on('signatureResponse',async (data) => {
             // if not leader, ignore
@@ -453,7 +481,8 @@ export class Communicator {
                 console.log("Invalid signature");
                 return;
             }
-            pendingTx.signatures.push(data.signature.toString());
+            if(!pendingTx.signatures.includes(data.signature.toString()))
+                pendingTx.signatures.push(data.signature.toString());
             if(pendingTx.signatures.length >= this.topology.m){
                 const completedTx = (await pendingTx.tx.assemble(pendingTx.signatures).complete())
                 ADAWatcher.submitTransaction(completedTx);
@@ -461,10 +490,10 @@ export class Communicator {
             }
         });
 
-        socket.on('newRedemption', async (data) => {
+        socket.on('newRedemption', async (data: redemptionController ) => {
             // if peer is not leader, ignore
             if(this.peers[index].state !== NodeStatus.Leader ) return;
-            coordinator.newRedemption(data.currentTransaction, data.redemptionRequests);
+            coordinator.importRedemption(data);
             
         });
         
@@ -509,6 +538,7 @@ export class Communicator {
         if (peer.outgoingConnection) peer.outgoingConnection.disconnect();
     }
 
+    
     private async connect(i: number) {
         const peerPort = this.peers[i].port;
         const socket = Client(`http://localhost:${peerPort}`);
@@ -551,12 +581,28 @@ export class Communicator {
         });
 
     }
+    leaderBroadcast(method, params= undefined) {
+        try{
+            this.peers[this.getLeader()].outgoingConnection.emit(method, params);
+        }catch(err){
+            console.log("Error sending to leader", err);
+        }
+    }
+
 
     broadcast(method, params= undefined) {
         this.peers.forEach((node, index) => {
-            if (node.outgoingConnection) {
+            if (node.outgoingConnection && index !== this.Iam) {
                 node.outgoingConnection.emit(method, params);
             }
         });
+    }
+
+    sendToLeader(method, params= undefined) {
+        try{
+            this.peers[this.getLeader()].outgoingConnection.emit(method, params);
+        }catch(err){
+            console.log("Error sending to leader", err);
+        }
     }
 }

@@ -1,6 +1,7 @@
 import BitcoinCore from "bitcoin-core"
 import * as bitcoin from 'bitcoinjs-lib';
 import {ECPairFactory}  from 'ecpair'
+import { TxComplete} from 'lucid-cardano'
 import * as ecc  from 'tiny-secp256k1'
 import { EventEmitter } from 'events';
 import {bitcoinConfig, topology, secretsConfig,  redemptionRequest} from "./types.js"
@@ -8,7 +9,7 @@ import * as bip39 from 'bip39';
 import {BIP32Factory} from 'bip32';
 import { emitter } from "./coordinator.js";
 import { utxo } from "./types.js";
-import { hexToString } from "./helpers.js";
+import { hexToString, hash } from "./helpers.js";
 import { ADAWatcher, communicator, coordinator } from "./index.js";
 
 const ECPair =  ECPairFactory(ecc);
@@ -54,6 +55,7 @@ export class BitcoinWatcher{
 
     }
 
+
     startListener = async () => {
         let lastHeight = await this.getHeight();
         console.log(lastHeight);
@@ -96,6 +98,9 @@ export class BitcoinWatcher{
 
         this.startListener()
     };
+    getVaultUtxos = () => {
+        return this.utxos[this.address.length].utxos;
+    }
 
     getUtxosByIndex = (index: number) => {
         try{
@@ -116,6 +121,10 @@ export class BitcoinWatcher{
         return isSynced;
     }
     
+    psbtFromHex = (hex: string) => {
+        return bitcoin.Psbt.fromHex(hex, {network : bitcoin.networks[this.config.network] });
+    }
+
     combine(psbt1: bitcoin.Psbt, psbt2: string) {
         const txb1 = psbt1
         const txb2 = bitcoin.Psbt.fromHex(psbt2, {network : bitcoin.networks[this.config.network] });
@@ -127,7 +136,7 @@ export class BitcoinWatcher{
         txb.finalizeAllInputs();
         const tx = txb.extractTransaction();
         const txHex = tx.toHex();
-        this.client.sendRawTransaction(txHex);
+        return this.client.sendRawTransaction(txHex);
     }
 
     withdrawProfits = async (amount: number) => {
@@ -203,15 +212,17 @@ export class BitcoinWatcher{
         console.log(txSize)
         if (total === 0) throw new Error('No UTXOs to redeem');
         const feerate = await this.getFee() ;
-        const fee = Math.round( 100_000 * feerate  * txSize) ; //round to 8 decimal places
+        const fee = Math.round( 100_000 * feerate  * txSize * coordinator.getConfig().btcNetworkFeeMultiplyer)  ; //round to 8 decimal places
         let amountToSend = 0
         
         requests.forEach((request) => {
-            console.log("request", hexToString( request.decodedDatum.destinationAddress), request.assets[ADAWatcher.getCBtcId()])
-            txb.addOutput({address:hexToString( request.decodedDatum.destinationAddress), value: Number(request.assets[ADAWatcher.getCBtcId()]) });
-            amountToSend += Number(request.assets[ADAWatcher.getCBtcId()]);
+            console.log(request)
+            const amount = coordinator.calculateRedemptionAmount(request);
+            txb.addOutput({address: request.decodedDatum , value: amount });
+            amountToSend += amount;
         });
 
+        console.log("amountToSend", amountToSend, fee, total - amountToSend - fee)
         txb.addOutput({address: this.getVaultAddress(), value: total - amountToSend - fee });
         
         
@@ -220,31 +231,52 @@ export class BitcoinWatcher{
         return [txb, requests];
     }
 
-    checkRedemptionTx(tx : bitcoin.Psbt, redemptionRequests: redemptionRequest[]) : boolean{
-        // check than no 2 requests are the same by txHash and outputIndex
+    checkRedemptionTx(tx : string, burnTx : string) : boolean{
+        const txb = bitcoin.Psbt.fromHex(tx, {network : bitcoin.networks[this.config.network] });
+        const txc = ADAWatcher.txCompleteFromString(burnTx);
+        const [txDetails, cTx] = ADAWatcher.decodeTransaction(txc);
+        let redemptionRequests =  ADAWatcher.getRedemptionRequests();
+           // check than no 2 requests are the same by txHash and outputIndex
         const requestMap = new Map<string, redemptionRequest>();
         let totalInputValue = 0;
         let totalOutputValue = 0;
+        
+        redemptionRequests = redemptionRequests.filter((request) => txDetails.inputs.find((input) => input.transaction_id === request.txHash && Number(input.index) === request.outputIndex) !== undefined);
+        
+        if(txDetails.outputs.length !== 1 || txDetails.outputs[0].address !== coordinator.config.adminAddress || txDetails.outputs[0].amount.multiasset !== null ) 
+            throw new Error('Invalid burn transaction Output');
+        
+        if(txDetails.inputs.length !== redemptionRequests.length) 
+            throw new Error('Invalid burn transaction Input');
+        
+        let totalBurn = 0;
         redemptionRequests.forEach((request) => {
             const key = request.txHash + request.outputIndex;
+            totalBurn += Number(request.assets[ADAWatcher.getCBtcId()]);
             if(requestMap.has(key)) throw new Error('Duplicate Redemption Request');
             requestMap.set(key, request);
         });
-
-
-        const ValidRedemptionScript = this.getVaultRedeemScript()
-        tx.data.inputs.forEach((input) => {
-            if(input.witnessScript.toString('hex') !== ValidRedemptionScript) throw new Error('Invalid consolidation transaction Input');
+        console.log(Object.keys(txDetails.mint).length,Object.keys(txDetails.mint[ADAWatcher.getCBtcPolicy()]).length,txDetails.mint[ADAWatcher.getCBtcPolicy()][ADAWatcher.getCBtcHex()], -totalBurn )
+        
+        if(Object.keys(txDetails.mint).length !== 1 || Object.keys(txDetails.mint[ADAWatcher.getCBtcPolicy()]).length !== 1 || Number(txDetails.mint[ADAWatcher.getCBtcPolicy()][ADAWatcher.getCBtcHex()]) !== -totalBurn)
+                throw new Error('Invalid burn transaction mint');
+            
+            console.log("redemptionRequests", redemptionRequests)
+            const ValidRedemptionScript = this.getVaultRedeemScript()
+            txb.data.inputs.forEach((input) => {
+                if(input.witnessScript.toString('hex') !== ValidRedemptionScript) throw new Error('Invalid redemption transaction Input');
         });
 
         
-        tx.txOutputs.forEach((output) => {
+        txb.txOutputs.forEach((output) => {
             if(output.address !== this.getVaultAddress())
             {
-                const request = redemptionRequests.find((request) => (request.decodedDatum.destinationAddress === output.address) && ( Number(request.assets[ADAWatcher.getCBtcId()]) === output.value));
-                if(request === undefined) throw new Error('Invalid consolidation transaction Output');    
+
                 
-                if( output.value !== coordinator.calculateRedemptionAmount(request)) throw new Error('Invalid consolidation transaction Output');
+                const request = redemptionRequests.find((request) => (request.decodedDatum === output.address) && ( coordinator.calculateRedemptionAmount(request) === output.value));
+                if(request === undefined) throw new Error('Invalid redemption transaction Output(not found)');    
+                
+                if( output.value !== coordinator.calculateRedemptionAmount(request)) throw new Error('Invalid redemption transaction Output(wrong amount) ');
 
                 if(requestMap.has(request.txHash + request.outputIndex)){
                      requestMap.delete(request.txHash + request.outputIndex)
@@ -252,26 +284,39 @@ export class BitcoinWatcher{
                     throw new Error('Duplicate Redemption fulfillment');
                 }
 
+                if( requestMap.size !== 0) throw new Error('Not all redemption requests were fulfilled');
+
             }
         });
+
         return true;
     }
 
 
-    completeRedemption = async (txb: bitcoin.Psbt) => {
-        txb.signAllInputs(this.watcherKey);
-        txb.finalizeAllInputs();
-        const tx = txb.extractTransaction();
-        const txHex = tx.toHex();
-        const resault = await this.client.sendRawTransaction(txHex);
-        return resault;
+    completeRedemption = async (txHex: string) => {
+        const txb = bitcoin.Psbt.fromHex(txHex, {network : bitcoin.networks[this.config.network] });
+        
+        txb.signAllInputs(this.watcherKey); 
+        communicator.sendToLeader("redemptionSignature", txb.toHex());
 
     }
 
     isTxConfirmed = async (txid: string) => {
-        const tx = await this.client.command('gettransaction', txid);
-        return tx.confirmations > this.config.Finality;
-    }
+        try{
+
+           return  this.getVaultUtxos().some((utxo) => utxo.txid === txid);
+        } catch (e) {
+            if(e.code === -18) {
+                await this.client.command('createwallet', 'mywallet');
+            }
+            console.log("Failed confirming Tx", e)
+            return false;
+        }
+
+
+        }
+
+
 
     updatePendingFees = async () => {   
         
@@ -331,22 +376,23 @@ export class BitcoinWatcher{
 
     async signRedemptionTransaction(txHex: string) {
         const txb = bitcoin.Psbt.fromHex(txHex, {network : bitcoin.networks[this.config.network] });
-        const burnTx = await ADAWatcher.getBurnByRedemptionTx(txHex);
-        const validScipts = this.utxos.map((address) => this.getRedeemScript(address.index));
+        const TxHash = await hash(txHex)
+      //  console.log("signing redemption transaction" , txHex, hash)
         // check if the transaction is a redemption transaction and if it is in the utxos 
+        if(! ADAWatcher.confirmRedemption(TxHash))
+            throw new Error('Invalid redemption transaction');
+
         let totalInputValue = 0;
         let totalOutputValue = 0;
+
         txb.data.inputs.forEach((input) => {
-            if(validScipts.includes(input.witnessScript.toString('hex')) === false) throw new Error('Invalid redemption transaction Input');
-            totalInputValue += input.witnessUtxo.value;
+           
         });
 
         txb.txOutputs.forEach((output) => {
             totalOutputValue += output.value;
-            if (output.address !== this.getVaultAddress()) throw new Error('Invalid redemption transaction Output');
         });
 
-        if (totalInputValue !== totalOutputValue) throw new Error('Invalid redemption transaction Output');
 
         txb.signAllInputs(this.watcherKey);
         return txb.toHex();
@@ -458,6 +504,9 @@ export class BitcoinWatcher{
         }
     }
 
+    getM = () => {
+        return this.topology.m;
+    }
     
 
     refundIndex = (index: number) => {
@@ -466,7 +515,7 @@ export class BitcoinWatcher{
     
     getFee = async () => {  
         const fee = await this.client.estimateSmartFee(100)
-        return fee.feerate ? fee.feerate * 1.5 : this.config.falbackFeeRate;
+        return fee.feerate ? fee.feerate : this.config.falbackFeeRate;
     }
 
     getUtxos = async () => {

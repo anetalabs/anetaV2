@@ -24,6 +24,7 @@ export function stringToHex(str) {
     return hex;
 }
 
+
 export function hexToString(hex) {
     let string = '';
     for(let i = 0; i < hex.length; i += 2) {
