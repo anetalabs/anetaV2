@@ -300,6 +300,34 @@ export class BitcoinWatcher{
         communicator.sendToLeader("redemptionSignature", txb.toHex());
 
     }
+    getTxId = (txHex: string) => {
+        const txb2 = bitcoin.Psbt.fromHex(txHex, {network : bitcoin.networks[this.config.network] });
+        txb2.finalizeAllInputs();
+        const tx = txb2.extractTransaction();
+        return tx.getId();
+    }
+
+
+    txEqual = (tx1: string, tx2: string) => {
+        const txb1 = bitcoin.Psbt.fromHex(tx1, {network : bitcoin.networks[this.config.network] });
+        const txb2 = bitcoin.Psbt.fromHex(tx2, {network : bitcoin.networks[this.config.network] });
+        const sortedInputs1 = txb1.txInputs.sort((a, b) => a.hash.toString('hex').localeCompare(b.hash.toString('hex')) || a.index - b.index);
+        const sortedInputs2 = txb2.txInputs.sort((a, b) => a.hash.toString('hex').localeCompare(b.hash.toString('hex')) || a.index - b.index);
+
+        for(let i = 0; i < sortedInputs1.length; i++){
+            if(sortedInputs1[i].hash.toString('hex') !== sortedInputs2[i].hash.toString('hex') || sortedInputs1[i].index !== sortedInputs2[i].index) return false;
+        }
+
+        const sortedOutputs1 = txb1.txOutputs.sort((a, b) => a.address.localeCompare(b.address) || a.value - b.value);
+        const sortedOutputs2 = txb2.txOutputs.sort((a, b) => a.address.localeCompare(b.address) || a.value - b.value);
+      
+        for(let i = 0; i < sortedOutputs1.length; i++){
+          if(sortedOutputs1[i].address !== sortedOutputs2[i].address || sortedOutputs1[i].value !== sortedOutputs2[i].value) return false;
+        }
+      
+        return true;
+
+    }
 
     isTxConfirmed = async (txid: string) => {
         try{

@@ -178,21 +178,21 @@ export class Coordinator{
         }
     }
 
-    updateRedemptionId(txId: string, index: number){
+    updateRedemptionId(data: { index: number, tx: string}){
         if(this.redemptionState.state === redemptionState.finalized) return;
-        this.redemptionState.redemptionTxId = txId;
-        this.redemptionState.state = redemptionState.finalized;
-        this.redemptionState.index = index;
-        this.redemptionState.redemptionTx = txId;
-        this.redemptionDb.findOneAndUpdate({ index : this.redemptionState.index }, {$set: this.redemptionState}, {upsert: true});
+        if(BTCWatcher.txEqual(this.redemptionState.currentTransaction, data.tx)){
+            
+            this.redemptionState.redemptionTxId = BTCWatcher.getTxId(data.tx);
+            this.redemptionState.state = redemptionState.completed;
+            this.redemptionDb.findOneAndUpdate({ index : this.redemptionState.index }, {$set: this.redemptionState}, {upsert: true});
+            this.checkRedemption();
+        }
+        
     }
 
     async newRedemptionSignature(signature: string){
-        if(this.redemptionState.state === redemptionState.finalized)
-            communicator.broadcast("updateRedemptionId", { txId: this.redemptionState.redemptionTxId, index: this.redemptionState.index }); 
-
-        if(this.redemptionState.state === redemptionState.completed) 
-            communicator.broadcast("completedRedemption", { txId: this.redemptionState.redemptionTxId, index: this.redemptionState.index , tx: this.redemptionState.redemptionSignatures});
+        if(this.redemptionState.state === redemptionState.completed || this.redemptionState.state === redemptionState.finalized) 
+            communicator.broadcast("updateRedemptionId", {  index: this.redemptionState.index , tx: this.redemptionState.redemptionSignatures});
 
         if(this.redemptionState.state !== redemptionState.burned) return;
         const tx = BTCWatcher.combine(BTCWatcher.psbtFromHex(this.redemptionState.redemptionSignatures), signature);
@@ -204,6 +204,8 @@ export class Coordinator{
                 this.redemptionState.state = redemptionState.completed;
                 this.redemptionState.redemptionTxId = redemptionTxId;
                 await this.redemptionDb.findOneAndUpdate({ index : this.redemptionState.index }, {$set: this.redemptionState}, {upsert: true});
+                communicator.broadcast("updateRedemptionId", {  index: this.redemptionState.index , tx: this.redemptionState.redemptionSignatures});
+
             }
         }catch(err){
             console.log("consolidation error:", err);

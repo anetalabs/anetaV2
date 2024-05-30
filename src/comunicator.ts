@@ -444,7 +444,7 @@ export class Communicator {
 
         socket.on("updateRedemptionId", async (data) => {
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
-          //  coordinator.updateRedemptionId(data);
+            coordinator.updateRedemptionId(data);
         });
 
         socket.on('burnSignature' , async (signature) => {
