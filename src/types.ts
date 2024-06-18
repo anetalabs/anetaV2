@@ -42,7 +42,7 @@ export type pendingBitcoinTransaction = {
 }
 
 export type pendingCardanoTransaction = {
-    type: "mint" | "burn" | "rejection",
+    type: "mint" | "burn" | "rejection" | "confescation",
     status: "pending" | "completed" ,
     txId: string,
     signatures: string[],
@@ -70,6 +70,8 @@ export type protocolConfig = {
     consolidationThreshold : number
     minMint: number
     minRedemption: number
+    mintDeposit: 50,
+    mintTimeoutMinutes: 60,   
     adminAddress: string
 }
 

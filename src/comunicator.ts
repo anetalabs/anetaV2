@@ -395,6 +395,9 @@ export class Communicator {
                     case "mint":
                         await ADAWatcher.signMint(data);
                         break;
+                    case "confescation":
+                        await ADAWatcher.signConfescation(data);
+                        break;
                 
                     default:
                         console.log("Unknown Signature Request");

@@ -23,11 +23,13 @@ interface paymentPaths{
     request?: mintRequest,
     payment?: utxo[] | null,
     fulfillment?: string | null
+    openTime?: number
 } 
 
 export class Coordinator{
 
     paymentPaths: paymentPaths[]
+    paymentPathsDb: Collection<paymentPaths>
     config: protocolConfig
     redemptionState: redemptionController
     redemptionDb: Collection<redemptionController>
@@ -35,13 +37,19 @@ export class Coordinator{
     constructor( protocol: protocolConfig){
         this.config  = protocol
         this.redemptionDb = getDb(ADAWatcher.getDbName()).collection("redemptionState");
-
+        this.paymentPathsDb = getDb(ADAWatcher.getDbName()).collection("paymentPaths");
         (async () => {
-                const documents = await this.redemptionDb.find().sort({ index: -1 }).limit(1).toArray();
-                this.redemptionState = documents[0] || {state: redemptionState.open, index: 0};  
-              })();
-        
-        this.paymentPaths = Array.from({length: BTCWatcher.getPaymentPaths()}, (_, index) => index).map((index) => {return {state: state.open, index: index , address: BTCWatcher.getAddress(index)}});
+            const documents = await this.redemptionDb.find().sort({ index: -1 }).limit(1).toArray();
+            this.redemptionState = documents[0] || {state: redemptionState.open, index: 0};  
+           
+            this.paymentPaths = await Promise.all(
+                Array.from({length: BTCWatcher.getPaymentPaths()}, (_, index) => index).map(async (index) => {
+                    const paymentPath = await this.paymentPathsDb.findOne({index});
+                    return paymentPath || {state: state.open, index, address: BTCWatcher.getAddress(index)};
+                })
+        );
+
+        })();
         this.getOpenRequests = this.getOpenRequests.bind(this);
         this.onNewCardanoBlock = this.onNewCardanoBlock.bind(this); 
        
@@ -58,16 +66,34 @@ export class Coordinator{
 
         //console.log("Mint Requests", mintRequests);
         //console.log("Redemption Requests", redemptionRequests);
+        this.paymentPaths.forEach( (paymentPath, index) => {
+            if(paymentPath.state === state.commited && mintRequests.find((mintRequest) => requestId(mintRequest) === requestId(paymentPath.request)) === undefined){
+                console.log("Payment path not found, reopening");
+                paymentPath = {state: state.open, index: paymentPath.index, address: BTCWatcher.getAddress(paymentPath.index)};
+                this.paymentPaths[index] = paymentPath;
+                this.paymentPathsDb.deleteOne({ index: paymentPath.index });
+            }
+        });
+
+    
         mintRequests.forEach((request) => {
             const index = request.decodedDatum.path;
-            console.log("Minting request", request);
             if (request.decodedDatum.amount < this.config.minMint){
                 console.log("Minting amount too low, rejecting request");
                 ADAWatcher.rejectRequest(request.txHash, request.outputIndex);
+                return;
             }
+            if( Number(request.assets.lovelace) !== this.config.mintDeposit * 1000000){
+                console.log("Invalid deposit, rejecting request");
+                ADAWatcher.rejectRequest(request.txHash, request.outputIndex);
+                return;
+            }
+
             if (this.paymentPaths[index].state === state.open ){
                 this.paymentPaths[index].state = state.commited;
                 this.paymentPaths[index].request = request;
+                this.paymentPaths[index].openTime = Date.now();
+                this.paymentPathsDb.findOneAndUpdate({ index }, { $set: this.paymentPaths[index] }, { upsert: true });
             }else if (!this.paymentPaths[index].request || requestId(this.paymentPaths[index].request) !==  requestId(request)){
                 console.log("Payment Pathway already in use, rejecting request");
                 ADAWatcher.rejectRequest(request.txHash, request.outputIndex);
@@ -86,6 +112,16 @@ export class Coordinator{
                 console.log("Error crafting redemption transaction", e);
             }
         }
+        
+    }
+
+    async checkTimeout(){
+        this.paymentPaths.forEach((path, index) => {
+            if (path.state === state.commited && Date.now() - path.openTime > this.config.mintTimeoutMinutes * 60000){
+                console.log("Payment path timed out");
+                ADAWatcher.confescateDeposit(path.request.txHash, path.request.outputIndex);
+            }
+        });
         
     }
 
@@ -146,12 +182,9 @@ export class Coordinator{
 
     async onNewCardanoBlock(){
         console.log("New Cardano Block event");
-      await this.getOpenRequests();  
+      await this.getOpenRequests(); 
+      await this.checkTimeout(); 
       await this.checkBurn(); 
-///////////////////////////////////////////////
-      this.checkRedemption();
-////////////////////////////////////////////////      
-
     }
 
     async onNewBtcBlock(){
@@ -258,6 +291,7 @@ export class Coordinator{
                 payment.forEach(async (utxo) => {
                     if(await ADAWatcher.paymentProcessed(utxo.txid, utxo.vout)){
                         path.state = state.completed;
+                        this.paymentPathsDb.findOneAndUpdate({ index }, { $set: this.paymentPaths[index] }, { upsert: true });
                     }
                 });
             }
@@ -265,9 +299,10 @@ export class Coordinator{
 
             if(path.state === state.finished && payment.length  === 0){
                 path = {state: state.open, index: index , address: BTCWatcher.getAddress(index)};
+                this.paymentPaths[index] = path;
+                this.paymentPathsDb.deleteOne({ index });
             }
-
-
+         
             if (path.state === state.commited && payment.length > 0){
                 let sum = BTCWatcher.btcToSat(payment.reduce((acc, utxo) => acc + utxo.amount, 0));
                 const totalToPay = this.calculatePaymentAmount(path.request);
@@ -316,6 +351,7 @@ export class Coordinator{
             await BTCWatcher.consolidatePayments(completed);
             completed.forEach((index) => {
                 this.paymentPaths[index].state = state.finished;
+                this.paymentPathsDb.findOneAndUpdate({ index }, { $set: this.paymentPaths[index] }, { upsert: true });
             });
         }
     }
