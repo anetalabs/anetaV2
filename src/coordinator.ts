@@ -74,8 +74,11 @@ export class Coordinator{
                 this.paymentPathsDb.deleteOne({ index: paymentPath.index });
             }
         });
-
-    
+        try{
+            console.log("fee Rate", await BTCWatcher.getFee());
+        }catch(e){
+            console.log("Error getting fee rate", e);
+        }
         mintRequests.forEach((request) => {
             const index = request.decodedDatum.path;
             if (request.decodedDatum.amount < this.config.minMint){

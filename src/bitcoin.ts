@@ -140,6 +140,7 @@ export class BitcoinWatcher{
     }
 
     withdrawProfits = async (amount: number) => {
+       try{ 
         const txb = new bitcoin.Psbt({network : bitcoin.networks[this.config.network] });
         let total = 0;
         let txSize = 10 + 34 * 2; // Replace numOutputs with the number of outputs
@@ -176,7 +177,9 @@ export class BitcoinWatcher{
         const txHex = tx.toHex();
         const resault = await this.client.sendRawTransaction(txHex);
         console.log(resault);
-        
+    } catch (e) {
+        console.log(e)
+    }
         
     }
 
@@ -184,51 +187,55 @@ export class BitcoinWatcher{
         while ( this.isSynced === false) {
             await new Promise((resolve) => setTimeout(resolve, 5000));
         }
-        
-        const txb = new bitcoin.Psbt({network : bitcoin.networks[this.config.network] });
-        let total = 0;
-        let txSize = 10 + 34 * (requests.length+1)
-        const nonWitnessData = 41;
-        const witnessData = this.topology.m * 73 + this.topology.topology.length * 34 + 3 + this.topology.m + this.topology.topology.length * 34 + 1;
-        const inputSize = nonWitnessData + Math.ceil(witnessData / 4);
-        const utxos = this.utxos[this.utxos.length - 1 ].utxos;
-        console.log("crafting redemption transaction", requests, utxos);
-        const redeemScript = Buffer.from(this.getVaultRedeemScript(), 'hex');
-        for (let i = 0; i < utxos.length; i++) {
-            total += Math.round(utxos[i].amount * 100000000) ;
-            txb.addInput({
-                hash: utxos[i].txid,
-                index: utxos[i].vout,
-                witnessUtxo: {
-                    script: Buffer.from(utxos[i].scriptPubKey, 'hex'),
-                    value: Math.round(utxos[i].amount * 100_000_000),
-                },
-                witnessScript: redeemScript,
+        try{
+            const txb = new bitcoin.Psbt({network : bitcoin.networks[this.config.network] });
+            let total = 0;
+            let txSize = 10 + 34 * (requests.length+1)
+            const nonWitnessData = 41;
+            const witnessData = this.topology.m * 73 + this.topology.topology.length * 34 + 3 + this.topology.m + this.topology.topology.length * 34 + 1;
+            const inputSize = nonWitnessData + Math.ceil(witnessData / 4);
+            const utxos = this.utxos[this.utxos.length - 1 ].utxos;
+            console.log("crafting redemption transaction", requests, utxos);
+            const redeemScript = Buffer.from(this.getVaultRedeemScript(), 'hex');
+            for (let i = 0; i < utxos.length; i++) {
+                total += Math.round(utxos[i].amount * 100000000) ;
+                txb.addInput({
+                    hash: utxos[i].txid,
+                    index: utxos[i].vout,
+                    witnessUtxo: {
+                        script: Buffer.from(utxos[i].scriptPubKey, 'hex'),
+                        value: Math.round(utxos[i].amount * 100_000_000),
+                    },
+                    witnessScript: redeemScript,
+                });
+            }
+
+
+            txSize += utxos.length * inputSize;
+            console.log(txSize)
+            if (total === 0) throw new Error('No UTXOs to redeem');
+            const feerate = await this.getFee() ;
+            const fee = Math.round( 100_000 * feerate  * txSize * coordinator.getConfig().btcNetworkFeeMultiplyer)  ; //round to 8 decimal places
+            let amountToSend = 0
+            
+            requests.forEach((request) => {
+                console.log(request)
+                const amount = coordinator.calculateRedemptionAmount(request);
+                txb.addOutput({address: request.decodedDatum , value: amount });
+                amountToSend += amount;
             });
+
+            console.log("amountToSend", amountToSend, fee, total - amountToSend - fee)
+            txb.addOutput({address: this.getVaultAddress(), value: total - amountToSend - fee });
+            
+            
+            // if (amountToSend < requests.reduce((acc, request) => acc + Number(request.assets[ADAWatcher.getCBtcId()]), 0)) throw new Error('Not enough funds');
+        
+            return [txb, requests];
+        } catch (e) {
+            console.log(e)
         }
 
-
-        txSize += utxos.length * inputSize;
-        console.log(txSize)
-        if (total === 0) throw new Error('No UTXOs to redeem');
-        const feerate = await this.getFee() ;
-        const fee = Math.round( 100_000 * feerate  * txSize * coordinator.getConfig().btcNetworkFeeMultiplyer)  ; //round to 8 decimal places
-        let amountToSend = 0
-        
-        requests.forEach((request) => {
-            console.log(request)
-            const amount = coordinator.calculateRedemptionAmount(request);
-            txb.addOutput({address: request.decodedDatum , value: amount });
-            amountToSend += amount;
-        });
-
-        console.log("amountToSend", amountToSend, fee, total - amountToSend - fee)
-        txb.addOutput({address: this.getVaultAddress(), value: total - amountToSend - fee });
-        
-        
-        // if (amountToSend < requests.reduce((acc, request) => acc + Number(request.assets[ADAWatcher.getCBtcId()]), 0)) throw new Error('Not enough funds');
-      
-        return [txb, requests];
     }
 
     checkRedemptionTx(tx : string, burnTx : string) : boolean{
@@ -514,7 +521,6 @@ export class BitcoinWatcher{
 
     } catch (e) {   
         console.log(e)
-        throw e;
     }
 }
 
@@ -543,13 +549,14 @@ export class BitcoinWatcher{
     
     getFee = async () => {  
         const fee = await this.client.estimateSmartFee(100)
+        if(fee.feerate && fee.feerate > coordinator.config.maxBtcFeeRate) throw new Error(`Fee rate over limit ${fee.feerate} > ${coordinator.config.maxBtcFeeRate}`);
         return fee.feerate ? fee.feerate : this.config.falbackFeeRate;
     }
 
     getUtxos = async () => {
         try{
 
-            console.log("fee: ", await this.getFee())
+            
             if (this.gettingUtxos) return;
             this.gettingUtxos = true;
             const descriptors = this.address.map(address => ({ 'desc': `addr(${address})`, 'range': 1000 }));

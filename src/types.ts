@@ -63,15 +63,16 @@ export enum NodeStatus {
 export type protocolConfig = {
     redemptionMargin: number
     btcNetworkFeeMultiplyer: number
-    fixedFee: number,
-    margin: number,
+    fixedFee: number
+    margin: number
     utxoCharge: number
     maxConsolidationTime: number
     consolidationThreshold : number
     minMint: number
     minRedemption: number
-    mintDeposit: 50,
-    mintTimeoutMinutes: 60,   
+    maxBtcFeeRate : number 
+    mintDeposit: number
+    mintTimeoutMinutes: number  
     adminAddress: string
 }
 
