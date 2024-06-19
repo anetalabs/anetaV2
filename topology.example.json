@@ -1,7 +1,7 @@
 {
     
     "topology" : [
-        {"name":"Guardian Angel 1","ip":"<IP_ADDRESS>","AdaPkHash":"00fb9ebd6baf0680bdf8da11f87eaca9715d1f9ffa9c83241c643e53","btcKey":"03b443417f1239a40f5e052a865cafb935be9637e8311e430a8c893536c1af9dfa"},
+        {"name":"Guardian Angel 1","ip":"<IP_ADDRESS>","AdaPkHash":"00fb9ebd6baf0680bdf8da11f87eaca9715d1f9ffa9c83241c643e53","btcKey":"xpub6BmdTCP32fE1Rzio7ebg3VG5zx1KsHqMBBwWUMz5gvVqYYCDBgCVvA5VPFZxPvVTgdxnyRVQ94nPxVcVpJ1yoztbbDJbud57yHqqrD97cVB"},
         {"name": "Guardian Angel 2","ip": "" , "AdaPkHash" : "", "btcKey" : "033118ee8630cdc51e5ba93e77ea099b0cc77c67875778d02f1dfe7eeddef34e47"}
     ],    
     "m":1

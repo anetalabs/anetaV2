@@ -598,7 +598,12 @@ export class BitcoinWatcher{
     }
 
     getVaultAddress(){
-        const HexKeys =  this.topology.topology.map((guardian) => guardian.btcKey);
+        const HexKeys =  this.topology.topology.map((guardian , guardianIndex) => {
+            const bip32 = BIP32Factory(ecc);
+            const parent = bip32.fromBase58(guardian.btcKey);
+            const child = parent.derive(0);
+            return child.derive(0).publicKey.toString('hex'); 
+        });
         const pubkeys = HexKeys.map(key => Buffer.from(key, 'hex'));
         const p2shAddress = bitcoin.payments.p2wsh({
             redeem: bitcoin.payments.p2ms({ m: this.topology.m , pubkeys ,
@@ -610,7 +615,14 @@ export class BitcoinWatcher{
     }
     
     getAddress(index: number){
-        const HexKeys =  this.topology.topology.map((guardian) => guardian.btcKey);
+        if(index < 0 || index >= this.config.paymentPaths) throw new Error('Index out of range');
+        const HexKeys =  this.topology.topology.map((guardian , guardianIndex) => {
+            const bip32 = BIP32Factory(ecc);
+            const parent = bip32.fromBase58(guardian.btcKey);
+            const child = parent.derive(0);
+            return guardianIndex === 0 ? child.derive(index+1).publicKey.toString('hex') : child.derive(0).publicKey.toString('hex'); 
+        });
+
         HexKeys.push(this.fillerKey(index +1));
         const pubkeys = HexKeys.map(key => Buffer.from(key, 'hex'));
         const p2shAddress = bitcoin.payments.p2wsh({
@@ -623,7 +635,13 @@ export class BitcoinWatcher{
     }
     
     getVaultRedeemScript(){
-        const HexKeys =  this.topology.topology.map((guardian) => guardian.btcKey);
+        const HexKeys =  this.topology.topology.map((guardian) => {
+            const bip32 = BIP32Factory(ecc);
+            const parent = bip32.fromBase58(guardian.btcKey);
+            const child = parent.derive(0);
+            return child.derive(0).publicKey.toString('hex'); 
+        });
+
         const pubkeys = HexKeys.map(key => Buffer.from(key, 'hex'));
         const p2shAddress = bitcoin.payments.p2wsh({
             redeem: bitcoin.payments.p2ms({ m: this.topology.m , pubkeys ,
@@ -634,8 +652,12 @@ export class BitcoinWatcher{
     }
 
     getRedeemScript(index: number){
-
-        const HexKeys =  this.topology.topology.map((guardian) => guardian.btcKey);
+        const HexKeys =  this.topology.topology.map((guardian , guardianIndex) => {
+            const bip32 = BIP32Factory(ecc);
+            const parent = bip32.fromBase58(guardian.btcKey);
+            const child = parent.derive(0);
+            return guardianIndex === 0 ? child.derive(index+1).publicKey.toString('hex') : child.derive(0).publicKey.toString('hex'); 
+        });
         HexKeys.push(this.fillerKey(index+1));
         const pubkeys = HexKeys.map(key => Buffer.from(key, 'hex'));
         const p2shAddress = bitcoin.payments.p2wsh({
