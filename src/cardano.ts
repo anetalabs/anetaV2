@@ -54,13 +54,10 @@ export class CardanoWatcher{
            this.myKeyHash = this.lucid.utils.getAddressDetails(await this.lucid.wallet.address()).paymentCredential.hash;
            console.log("Address", this.address);
            console.log("Local Address", await this.lucid.wallet.address());    
-
             await this.dumpHistory();
-            console.timeEnd("dumpHistory");
             this.startIndexer();
         })();
         
-
         console.log("cardano watcher")
     }
 
@@ -463,16 +460,15 @@ export class CardanoWatcher{
 
 
     async dumpHistory(){
+        try{
         const chunkSize = 100; 
         let tip = await this.mongo.collection("height").findOne({type: "top"});
         console.log("tip" , tip);
         let tipPoint = undefined ;   
         if(tip){
-            tipPoint = {index: tip.slot, hash: tip.hash};
+            tipPoint = {index: tip.slot, hash: new Uint8Array(Buffer.from(tip.hash, "hex"))};
         }
-
-
-        console.log("Starting from tip", tipPoint);
+        console.log("Starting sync from tip", tipPoint);
         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers: {"dmtr-api-key": this.config.utxoRpc.key}} );
         let chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize});
         while(chunk.nextToken ){
@@ -492,13 +488,15 @@ export class CardanoWatcher{
             chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize});
             console.timeEnd("NextChunkFetch")
         }
+    }catch(e){
+        console.log(e);
+       await this.dumpHistory();
+    }
+
 
         //exit the process
         console.log("Done Dumping History");
-
-       
-
-    }
+       }
 
     removeConsumedRequests( requests: Lucid.UTxO[]){
         this.rejectionQueue.forEach((request) => {
@@ -553,11 +551,9 @@ export class CardanoWatcher{
                     }
                 }
             });
-
             this.redemptionRequests = redemptionRequests;
 
             return [ mintRequests.filter((request) => request) , redemptionRequests.filter((request) => request)  ];
-
 
         }catch(e){
             console.log(e);
@@ -567,7 +563,7 @@ export class CardanoWatcher{
     
     getRedemptionRequests() : redemptionRequest[]{
         return this.redemptionRequests;
-    }
+    }    
 
     async startIndexer() {
         let tip = await this.mongo.collection("height").findOne({type: "top"});
@@ -582,7 +578,7 @@ export class CardanoWatcher{
 
 
 
-        console.log("Starting from tip", tipPoint);
+        console.log("Starting indexer from tip", tipPoint);
         const rcpClient = new CardanoSyncClient({ uri : "https://preview.utxorpc-v0.demeter.run",  headers: {"dmtr-api-key": "dmtr_utxorpc1rutw90zm5ucx4lg9tj56nymnq5j98zlf"}} );
         console.log(rcpClient.inner.dumpHistory)
         const stream =  rcpClient.followTip( tipPoint);
