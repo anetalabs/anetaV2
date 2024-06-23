@@ -6,10 +6,6 @@ import { Socket as ClientSocket } from 'socket.io-client';
 import  Client  from 'socket.io-client';
 import * as Lucid  from 'lucid-cardano';
 import crypto from 'crypto';
-import { CardanoWatcher } from './cardano.js';
-import { BitcoinWatcher } from './bitcoin.js';
-import { txId } from './helpers.js';
-
 const HEARTBEAT = 5000;
 const ELECTION_TIMEOUT = 5;
 
@@ -457,7 +453,7 @@ export class Communicator {
         socket.on('burnSignature' , async (signature) => {
             // if not leader, ignore
             try{
-            console.log("Burn signature received", signature)
+            console.log("Burn signature received", signature, "from", this.peers[index].id)
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
             const burnTx =  ADAWatcher.txCompleteFromString(coordinator.getBurnTx());     
             const signatureInfo = ADAWatcher.decodeSignature(signature);

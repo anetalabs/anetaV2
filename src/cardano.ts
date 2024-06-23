@@ -78,7 +78,8 @@ export class CardanoWatcher{
 
     async signBurn(txHex : string){
         const tx = this.txCompleteFromString(txHex)
-        const signature = await  tx.partialSign();
+        const signature =  (await this.lucid.wallet.signTx( tx.txComplete)).to_bytes().reduce((str, byte) => str + byte.toString(16).padStart(2, '0'), '');
+        console.log("Signature", signature);
         communicator.sendToLeader( "burnSignature" , signature.toString());
     }
 
