@@ -325,6 +325,7 @@ export class CardanoWatcher{
     async signMint(tx : {tx: Lucid.TxComplete, txId : string , metadata: [string, number][]}){
         try{
             const [txDetails, cTx] = this.decodeTransaction(tx.tx);
+            console.log("Signing Mint", JSON.stringify(txDetails));
             let requestTxHash = txDetails.inputs[0].transaction_id;
             let requestIndex = Number(txDetails.inputs[0].index);
             if(! await this.checkMedatada(txDetails.auxiliary_data_hash, tx.metadata)) throw new Error("Invalid Metadata");
@@ -354,11 +355,15 @@ export class CardanoWatcher{
 
             const mintClean = Object.keys(txDetails.mint).length === 1  &&   Object.keys(txDetails.mint[this.cBTCPolicy]).length === 1 &&  Number(txDetails.mint[this.cBTCPolicy][this.cBtcHex]) === Number( (request.decodedDatum.amount)) ; //metadata.amount;
             const inputsClean = (txDetails.inputs.length === 1 && txDetails.inputs[0].transaction_id === requestTxHash && Number(txDetails.inputs[0].index) ===  requestIndex);
-            const outputsClean = txDetails.outputs.length === 1 && txDetails.outputs[0].address === requestListing.targetAddress ;
+
+            txDetails.outputs.forEach((output) => {
+                if (output.address !== requestListing.targetAddress)
+                throw new Error("Invalid Output Address");
+            });
             const withdrawalsClean = txDetails.withdrawals === null;
             const paymentComplete = Number(BTCWatcher.btcToSat(total)) >= Number( coordinator.calculatePaymentAmount(request, utxos.length));
-            console.log(mintClean, inputsClean, outputsClean, withdrawalsClean , !requestListing.completed,  coordinator.calculatePaymentAmount(request, utxos.length), paymentComplete,request.decodedDatum.amount , total)
-            if (!requestListing.completed && mintClean && inputsClean && outputsClean && withdrawalsClean && paymentComplete ){
+            console.log(mintClean, inputsClean,  withdrawalsClean , !requestListing.completed,  coordinator.calculatePaymentAmount(request, utxos.length), paymentComplete,request.decodedDatum.amount , total)
+            if (!requestListing.completed && mintClean && inputsClean &&  withdrawalsClean && paymentComplete ){
                 const signature =  (await this.lucid.wallet.signTx(cTx)).to_bytes().reduce((str, byte) => str + byte.toString(16).padStart(2, '0'), '');
                 console.log("Signature", signature);
                 communicator.signatureResponse({txId: tx.txId , signature});
@@ -560,7 +565,7 @@ export class CardanoWatcher{
             return [ [], []];
         }
     }
-    
+     
     getRedemptionRequests() : redemptionRequest[]{
         return this.redemptionRequests;
     }    

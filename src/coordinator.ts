@@ -336,7 +336,7 @@ export class Coordinator{
     async consolidatePayments(){
         
         // if more than half of the payment paths are completed, consolidate the payments
-        let completed = this.paymentPaths.filter((path) => path.state === state.completed).map((path) => path.index);
+        let completed = this.paymentPaths.filter((path) => path.state >= state.completed).map((path) => path.index);
         
         const threholdFilled = completed.length > BTCWatcher.getPaymentPaths()*this.config.consolidationThreshold;
         const currentHeight = await BTCWatcher.getHeight();
@@ -351,7 +351,7 @@ export class Coordinator{
         });
 
         const timeToConsolidate = maxWait > this.config.maxConsolidationTime;
-
+        console.log("Consolidation check", threholdFilled, timeToConsolidate, maxWait, this.config.maxConsolidationTime, completed);
         if(threholdFilled || timeToConsolidate){
             console.log("Consolidating payments");
             await BTCWatcher.consolidatePayments(completed);
@@ -359,6 +359,8 @@ export class Coordinator{
                 this.paymentPaths[index].state = state.finished;
                 this.paymentPathsDb.findOneAndUpdate({ index }, { $set: this.paymentPaths[index] }, { upsert: true });
             });
+        }else{
+            console.log("Not consolidating payments", timeToConsolidate , threholdFilled);
         }
     }
 

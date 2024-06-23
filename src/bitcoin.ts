@@ -6,7 +6,7 @@ import * as ecc  from 'tiny-secp256k1'
 import { EventEmitter } from 'events';
 import {bitcoinConfig, topology, secretsConfig,  redemptionRequest} from "./types.js"
 import * as bip39 from 'bip39';
-import {BIP32Factory} from 'bip32';
+import {BIP32Factory , BIP32Interface} from 'bip32';
 import { emitter } from "./coordinator.js";
 import { utxo } from "./types.js";
 import { hexToString, hash } from "./helpers.js";
@@ -31,7 +31,7 @@ export class BitcoinWatcher{
     private config: bitcoinConfig ;
     private topology: topology;
     private gettingUtxos: boolean = false;
-    
+    private root: BIP32Interface ;
     private consolidationQue: number[] = []; 
 
     constructor(config : bitcoinConfig, topology : topology, secrets : secretsConfig){
@@ -48,9 +48,9 @@ export class BitcoinWatcher{
 
         const seed = bip39.mnemonicToSeedSync(secrets.seed);
         const bip32 = BIP32Factory(ecc);
-        const root = bip32. fromSeed(seed);
+        this.root = bip32.fromSeed(seed);
         const path = "m/44'/0'/0'/0/0"; // This is the BIP44 path for the first address in the first account of a Bitcoin wallet
-        const node = root.derivePath(path);
+        const node = this.root.derivePath(path);
 
         this.watcherKey = ECPair.fromPrivateKey(Buffer.from(node.privateKey.toString('hex'),'hex'), { network: bitcoin.networks[config.network] })
 
@@ -479,6 +479,7 @@ export class BitcoinWatcher{
             const inputSize = nonWitnessData + Math.ceil(witnessData / 4);   
             console.log("consolidating payments", indexs);
 
+            const keys = [];
 
             indexs.map((index) => {
                 if (index >= this.utxos.length - 1 ) throw new Error('Index out of range');
@@ -486,7 +487,6 @@ export class BitcoinWatcher{
                 const addressUtxos = this.utxos[index].utxos;
                 console.log("addressUtxos",indexs , addressUtxos)
                 const redeemScript = Buffer.from(this.getRedeemScript(index), 'hex');
-
                 
             for (let i = 0; i < addressUtxos.length; i++) {
                 console.log("amount", addressUtxos[i].amount)
@@ -500,6 +500,10 @@ export class BitcoinWatcher{
                     },
                     witnessScript: redeemScript,
                 });
+                const path = "m/44'/0'/0'/0"; // This is the BIP44 path for the first address in the first account of a Bitcoin wallet
+                const node = this.root.derivePath(path);
+                
+                keys.push ( ECPair.fromPrivateKey(Buffer.from(node.derive(index+1).privateKey.toString('hex'),'hex'), { network: bitcoin.networks[this.config.network] }))
             }
 
             txSize += addressUtxos.length * inputSize;
@@ -513,9 +517,14 @@ export class BitcoinWatcher{
             console.log("total", total, "fee", fee, "amount", amount, "txSize", txSize, "feerate", feerate);  
             console.log({address: this.getVaultAddress(), value: amount });
             txb.addOutput({address: this.getVaultAddress(), value: amount });
-            txb.signAllInputs(this.watcherKey);
+            
+            for(let i = 0; i < txb.inputCount; i++){
+                txb.signInput(i, keys[i]);
+            }
 
            const txHex = txb.toHex();
+
+
 
             // const signatures = txb.data.inputs.map((input) => input.partialSig[0].signature.toString('hex'));
             return txb;

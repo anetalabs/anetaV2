@@ -436,10 +436,14 @@ export class Communicator {
                     tx.tx = BTCWatcher.combine(tx.tx,data)
                     if(tx.tx.data.inputs[0].partialSig.length >= this.topology.m){
                         tx.status = "completed";
-                        BTCWatcher.completeAndSubmit(tx.tx);
+                        BTCWatcher.completeAndSubmit(tx.tx).then((txId) => {
+                                console.log("Transaction completed and submitted", txId , tx.type);   
+                           }).catch((err) => {
+                               console.log("Error completing and submitting transaction", err);
+                           });
                     }
                 }catch(err){
-                    console.log("consolidation error:", err);
+                    console.log("Signature processing error:", err);
                 }
 
             });
