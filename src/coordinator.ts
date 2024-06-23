@@ -27,7 +27,6 @@ interface paymentPaths{
 } 
 
 export class Coordinator{
-
     paymentPaths: paymentPaths[]
     paymentPathsDb: Collection<paymentPaths>
     config: protocolConfig
@@ -100,6 +99,10 @@ export class Coordinator{
             }else if (!this.paymentPaths[index].request || requestId(this.paymentPaths[index].request) !==  requestId(request)){
                 console.log("Payment Pathway already in use, rejecting request");
                 ADAWatcher.rejectRequest(request.txHash, request.outputIndex);
+            }
+
+            if (this.paymentPaths[index].state === state.payed){
+                ADAWatcher.completeMint(request.txHash, request.outputIndex, this.paymentPaths[index].payment)
             }
         });
 

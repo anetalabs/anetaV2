@@ -424,7 +424,7 @@ export class CardanoWatcher{
                                     
     
             try{
-                const tx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false});
+                const tx = await finalTx.complete({change: { address: await this.getUtxoSender(txHash, index)},  coinSelection : false, nativeUplc : false});
                 const signature = await  tx.partialSign();
                 communicator.cardanoTxToComplete( {type: "mint", txId : tx.toHash(), signatures: [signature] , tx , status: "pending", metadata});
             }catch(e){
