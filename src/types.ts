@@ -15,7 +15,6 @@ export  type bitcoinConfig =
     "falbackFeeRate" : number,
     "BTCadminAddress": string,
     "BTCPrivKey": string,
-    "Finality" : number,
     "network": string,
     "paymentPaths" : number
 }
@@ -74,6 +73,10 @@ export type protocolConfig = {
     mintDeposit: number
     mintTimeoutMinutes: number  
     adminAddress: string
+    finality: {
+      cardano: number
+      bitcoin: number
+    }
 }
 
 export type cardanoConfig = {
@@ -93,9 +96,8 @@ export type cardanoConfig = {
       host: string
       key: string
     }
-    contract: string,
-    finality: number
-  }
+    contract: string
+    }
 
 export type notificationConfig = {
     directory: string 

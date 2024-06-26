@@ -1,6 +1,6 @@
 import express from 'express';
 import {emitter}  from "./coordinator.js";
-import { communicator, coordinator } from './index.js';
+import { ADAWatcher, communicator, coordinator } from './index.js';
 export default class ApiServer {
   private app: express.Express;
   private networkStatus: string = "unknown"
@@ -40,6 +40,9 @@ export default class ApiServer {
       res.send('Hello World!');
     });
 
+    this.app.get('/redemptionReqests', (req, res) => {  
+      res.json({ redemptionRequests: ADAWatcher.getRedemptionRequests() });
+    });
     // Add a status endpoint
     this.app.get('/status', (req, res) => {
       

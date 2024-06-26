@@ -93,10 +93,10 @@ export class BitcoinWatcher{
             console.log('Bitcoin Node is not synced');
             await new Promise((resolve) => setTimeout(resolve, 5000));
         }
-        this.isSynced = true;
-
+        
         await this.getUtxos();
-
+        
+        this.isSynced = true;
         this.startListener()
     };
     getVaultUtxos = () => {
@@ -117,7 +117,6 @@ export class BitcoinWatcher{
 
     isNodeSynced = async () => {
         const info = await this.client.command('getblockchaininfo');
-        
         const isSynced = info.headers === info.blocks;
         return isSynced;
     }
@@ -196,7 +195,7 @@ export class BitcoinWatcher{
             const witnessData = this.topology.m * 73 + this.topology.topology.length * 34 + 3 + this.topology.m + this.topology.topology.length * 34 + 1;
             const inputSize = nonWitnessData + Math.ceil(witnessData / 4);
             const utxos = this.utxos[this.utxos.length - 1 ].utxos;
-            console.log("crafting redemption transaction", requests, utxos);
+            console.log("crafting redemption transaction");
             const redeemScript = Buffer.from(this.getVaultRedeemScript(), 'hex');
             for (let i = 0; i < utxos.length; i++) {
                 total += Math.round(utxos[i].amount * 100000000) ;
@@ -220,13 +219,11 @@ export class BitcoinWatcher{
             let amountToSend = 0
             
             requests.forEach((request) => {
-                console.log(request)
                 const amount = coordinator.calculateRedemptionAmount(request);
                 txb.addOutput({address: request.decodedDatum , value: amount });
                 amountToSend += amount;
             });
 
-            console.log("amountToSend", amountToSend, fee, total - amountToSend - fee)
             txb.addOutput({address: this.getVaultAddress(), value: total - amountToSend - fee });
             
             
@@ -317,20 +314,21 @@ export class BitcoinWatcher{
 
 
     txEqual = (tx1: string, tx2: string) => {
+        console.log("comparing txs", tx1, tx2)
         const txb1 = bitcoin.Psbt.fromHex(tx1, {network : bitcoin.networks[this.config.network] });
         const txb2 = bitcoin.Psbt.fromHex(tx2, {network : bitcoin.networks[this.config.network] });
         const sortedInputs1 = txb1.txInputs.sort((a, b) => a.hash.toString('hex').localeCompare(b.hash.toString('hex')) || a.index - b.index);
         const sortedInputs2 = txb2.txInputs.sort((a, b) => a.hash.toString('hex').localeCompare(b.hash.toString('hex')) || a.index - b.index);
 
         for(let i = 0; i < sortedInputs1.length; i++){
-            if(sortedInputs1[i].hash.toString('hex') !== sortedInputs2[i].hash.toString('hex') || sortedInputs1[i].index !== sortedInputs2[i].index) return false;
+            if(sortedInputs1[i].hash.toString('hex') !== sortedInputs2[i].hash.toString('hex') || sortedInputs1[i].index !== sortedInputs2[i].index) throw new Error('Invalid Tx Inputs');
         }
 
         const sortedOutputs1 = txb1.txOutputs.sort((a, b) => a.address.localeCompare(b.address) || a.value - b.value);
         const sortedOutputs2 = txb2.txOutputs.sort((a, b) => a.address.localeCompare(b.address) || a.value - b.value);
       
         for(let i = 0; i < sortedOutputs1.length; i++){
-          if(sortedOutputs1[i].address !== sortedOutputs2[i].address || sortedOutputs1[i].value !== sortedOutputs2[i].value) return false;
+          if(sortedOutputs1[i].address !== sortedOutputs2[i].address || sortedOutputs1[i].value !== sortedOutputs2[i].value) throw new Error('Invalid Tx Outputs');
         }
       
         return true;
@@ -574,7 +572,7 @@ export class BitcoinWatcher{
             const height = await this.getHeight()
             await this.client.command('scantxoutset', 'abort', descriptors)
             const resault =  await this.client.command('scantxoutset', 'start', descriptors)
-            const utxosRaw =  resault.unspents.map((utxo) => Object.assign( {}, utxo)).filter((utxo) => utxo.height <= height - this.config.Finality);
+            const utxosRaw =  resault.unspents.map((utxo) => Object.assign( {}, utxo)).filter((utxo) => utxo.height <= height - coordinator.config.finality.bitcoin);
             // Organize utxos by address
             const utxosByAddress = utxosRaw.reduce((acc, utxo) => {
                 const address = utxo.desc.split('(')[1].split(')')[0];

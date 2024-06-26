@@ -429,15 +429,17 @@ export class Communicator {
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
             this.btcTransactionsBuffer.forEach((tx) => {
                 try{
-                    tx.tx = BTCWatcher.combine(tx.tx,data)
-                    if(tx.tx.data.inputs[0].partialSig.length >= this.topology.m){
-                        tx.status = "completed";
-                        BTCWatcher.completeAndSubmit(tx.tx).then((txId) => {
-                                console.log("Transaction completed and submitted", txId , tx.type);   
-                           }).catch((err) => {
-                               console.log("Error completing and submitting transaction", err);
-                           });
-                    }
+                    if(BTCWatcher.txEqual(tx.tx.toHex() ,data.tx) === true){
+                        tx.tx = BTCWatcher.combine(tx.tx,data)
+                        if(tx.tx.data.inputs[0].partialSig.length >= this.topology.m){
+                            tx.status = "completed";
+                            BTCWatcher.completeAndSubmit(tx.tx).then((txId) => {
+                                    console.log("Transaction completed and submitted", txId , tx.type);   
+                                }).catch((err) => {
+                                    console.log("Error completing and submitting transaction", err);
+                                });
+                        }
+                }
                 }catch(err){
                     console.log("Signature processing error:", err);
                 }
@@ -445,9 +447,10 @@ export class Communicator {
             });
         });
 
-        socket.on("updateRedemptionId", async (data) => {
-            if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
-            coordinator.updateRedemptionId(data);
+        socket.on("updateRedemptionToComplete", async (data) => {
+            console.log("Redemption to complete received", data);
+            if(this.peers[index].state !== NodeStatus.Leader) return;
+            coordinator.updateRedemptionToComplete(data);
         });
 
         socket.on('burnSignature' , async (signature) => {
@@ -467,10 +470,10 @@ export class Communicator {
             }
         });
 
-        socket.on('newRedemSignature', async (signature) => {
-            // if not leader, ignore
+        socket.on('newRedemSignature', async (data) => {
+            console.log("Redemption signature received", data, "from")
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
-            coordinator.newRedemptionSignature(signature);
+            coordinator.newRedemptionSignature(data.sig, data.index);
         });
 
 
@@ -495,6 +498,7 @@ export class Communicator {
 
         socket.on('newRedemption', async (data: redemptionController ) => {
             // if peer is not leader, ignore
+            console.log("New redemption received", data);
             if(this.peers[index].state !== NodeStatus.Leader ) return;
             coordinator.importRedemption(data);
             
@@ -534,7 +538,24 @@ export class Communicator {
         });
     }
 
-
+    public checkAdaQuorum(pKHashes : string[] ) : boolean {
+        console.log("Checking quorum", pKHashes)
+        for(let i = 0; i < pKHashes.length; i++){
+            const peer = this.peers.find((peer) => peer.keyHash === pKHashes[i]);
+            
+            if(peer === undefined){
+                console.log("Peer not found", pKHashes[i]);
+                return false;
+            }
+            if([NodeStatus.Follower , NodeStatus.Leader].includes(peer.state) === false){
+                console.log("Peer not connected", pKHashes[i])
+                return false;
+            }
+        }
+        return true;
+    }
+        
+    
     private applyPunitveMeasures(peer: angelPeer) {
         console.log('Applying punitive measures');
         if (peer.incomingConnection) peer.incomingConnection.disconnect();

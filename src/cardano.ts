@@ -67,10 +67,12 @@ export class CardanoWatcher{
 
     async submitTransaction(tx: Lucid.TxSigned){
         //this.lucid.provider.submitTx(tx.toString());
-        console.log(tx.toString());
+        console.log("Submitting: ", tx.toString());
         try{
-            await axios.post("https://cardano-preview.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toString(), 'hex'), {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO", "Content-Type": "application/cbor"}})   
+            await this.lucid.provider.submitTx(tx.toString());
+          //  await axios.post("https://cardano-preview.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toString(), 'hex'), {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO", "Content-Type": "application/cbor"}})   
         }catch(e){
+            console.log(e);
             emitter.emit("submitionError", e);
         }
     }
@@ -557,7 +559,7 @@ export class CardanoWatcher{
                     }
                 }
             });
-            this.redemptionRequests = redemptionRequests;
+            this.redemptionRequests =  redemptionRequests.filter((request) => request)
 
             return [ mintRequests.filter((request) => request) , redemptionRequests.filter((request) => request)  ];
 
@@ -660,7 +662,7 @@ export class CardanoWatcher{
         const tip = await this.getTip();
         if(!tx) return false;
         const confirmations = tip.data.height - tx.height;
-        return  confirmations>= this.config.finality;
+        return  confirmations>=  coordinator.config.finality.cardano;
     }
 
     async isBurnConfirmed(txComplete : string){
@@ -672,9 +674,8 @@ export class CardanoWatcher{
         const tip = await this.getTip();
         if(!tx) return false;
         const confirmations = tip.data.height - tx.height;
-        return  confirmations>= this.config.finality;
+        return  confirmations >= coordinator.config.finality.cardano;
     }
-
 
 
     
@@ -686,7 +687,7 @@ export class CardanoWatcher{
         const tip = await this.getTip();
         if(!tx) return false;
         const confirmations = tip.data.height - tx.height;
-        if(confirmations>= this.config.finality){
+        if(confirmations>= coordinator.config.finality.cardano){
             return tx;
         }else{
             return false;
@@ -727,11 +728,16 @@ export class CardanoWatcher{
         return this.cBtcHex;
     }
 
+    getTxSigners(txHex : string ) : string[]{
+        const tx = this.txCompleteFromString(txHex);
+        const [txBody, cTx] = this.decodeTransaction(tx);
+        return cTx.body().required_signers().to_js_value();
+    }
+
     async getUtxoSender(hash : string, index: number){
         const data = await axios.get("https://cardano-preview.blockfrost.io/api/v0/txs/" + hash + "/utxos", {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO"}});
         return  data.data.inputs[index].address;
     }
-
 
     async registerNewBlock(block: CardanoBlock){
         await Promise.all(block.body.tx.map(async (tx) => {
