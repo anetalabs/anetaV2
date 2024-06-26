@@ -429,7 +429,6 @@ export class Communicator {
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
             this.btcTransactionsBuffer.forEach((tx) => {
                 try{
-                    if(BTCWatcher.txEqual(tx.tx.toHex() ,data.tx) === true){
                         tx.tx = BTCWatcher.combine(tx.tx,data)
                         if(tx.tx.data.inputs[0].partialSig.length >= this.topology.m){
                             tx.status = "completed";
@@ -439,7 +438,6 @@ export class Communicator {
                                     console.log("Error completing and submitting transaction", err);
                                 });
                         }
-                }
                 }catch(err){
                     console.log("Signature processing error:", err);
                 }
