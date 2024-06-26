@@ -151,6 +151,7 @@ export enum redemptionState{
   forged,
   burned,
   completed,
-  finalized
+  finalized,
+  cancelled
 }
 

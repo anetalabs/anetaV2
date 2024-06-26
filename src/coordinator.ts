@@ -143,7 +143,18 @@ export class Coordinator{
             const redemptionOk = BTCWatcher.checkRedemptionTx(newRedemptionState.currentTransaction, newRedemptionState.burningTransaction);
             
             console.log("Redemption state, current state", newRedemptionState.state, this.redemptionState.state);
-            if( ![redemptionState.open, redemptionState.finalized].includes(this.redemptionState.state) ) throw new Error("Redemption already in progress");
+            if( ![redemptionState.open, redemptionState.finalized, redemptionState.forged].includes(this.redemptionState.state) ) throw new Error("Redemption already in progress");
+
+            if(this.redemptionState.state === redemptionState.forged){
+                if ( communicator.checkAdaQuorum(ADAWatcher.getTxSigners(this.redemptionState.burningTransaction) )){
+                     throw new Error("Redemption already forged, waiting for burn signatures");
+                }else{
+                    console.log("Quorum not met, recreating redemption transaction");
+                    this.redemptionState.state = redemptionState.cancelled;
+                    await this.redemptionDb.findOneAndUpdate({ index : this.redemptionState.index }, { $set: this.redemptionState }, { upsert: true });
+                }
+                
+              }
 
             if (!redemptionOk) throw new Error("Redemption transaction is not valid");
 
@@ -162,8 +173,17 @@ export class Coordinator{
         
         if (!redemptionOk) throw new Error("Redemption transaction is not valid");
 
-        if (![redemptionState.open, redemptionState.finalized].includes(this.redemptionState.state) || this.redemptionState.state === redemptionState.forged && !communicator.checkAdaQuorum(ADAWatcher.getTxSigners(this.redemptionState.burningTransaction) ) ) throw new Error("Redemption already in progress");
+        if (![redemptionState.open, redemptionState.finalized, redemptionState.forged].includes(this.redemptionState.state) ) throw new Error("Redemption already in progress");
 
+        if(this.redemptionState.state === redemptionState.forged){ 
+            if ( communicator.checkAdaQuorum(ADAWatcher.getTxSigners(this.redemptionState.burningTransaction) )){
+                throw new Error("Redemption already forged, waiting for burn signatures");
+            }else{
+                    console.log("Quorum not met, recreating redemption transaction");
+                    this.redemptionState.state = redemptionState.cancelled;
+                    await this.redemptionDb.findOneAndUpdate({ index : this.redemptionState.index }, { $set: this.redemptionState }, { upsert: true });
+            }
+        }
 
         this.redemptionState = {
             index: this.redemptionState.index + 1 , 
