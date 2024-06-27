@@ -227,6 +227,7 @@ export class BitcoinWatcher{
             if (change < 0){
                 //remove the largest request and try again
                 const trimedRequests = requests.sort((a, b) => coordinator.calculateRedemptionAmount(b) - coordinator.calculateRedemptionAmount(a)).slice(1);
+                if (trimedRequests.length === 0) throw new Error('Not enough funds');
                 return this.craftRedemptionTransaction( trimedRequests)
             }
             txb.addOutput({address: this.getVaultAddress(), value: change });
