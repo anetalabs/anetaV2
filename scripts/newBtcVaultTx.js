@@ -94,8 +94,9 @@ async function craftTransaction(utxos)  {
         const feerate =  await client.estimateSmartFee(100)
         const fee = Math.round( 100_000 * feerate.feerate  * txSize ) ; //round to 8 decimal places
         if (args.amount){
-            txb.addOutput({ address: args.targetAddress, value: args.amount });
-            txb.addOutput({address: getVaultAddress(), value: total - args.amount - fee });
+            const amount = Math.round(args.amount * 100000000);
+            txb.addOutput({ address: args.targetAddress, value: amount });
+            txb.addOutput({address: getVaultAddress(), value: total - amount - fee });
         }else{
             txb.addOutput({ address: args.targetAddress, value: total - fee });
         }
