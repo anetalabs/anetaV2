@@ -283,6 +283,7 @@ export class Coordinator{
     }
 
     async newRedemptionSignature(signature: string, redemptionIndex : number){
+        try{
         if(this.redemptionState.state >= redemptionState.completed || this.redemptionState.index !== redemptionIndex) {
             const redemption = await this.redemptionDb.findOne({ index : redemptionIndex });
             communicator.broadcast("updateRedemptionToComplete", {  index: redemption.index , tx: redemption.redemptionSignatures});
@@ -293,7 +294,6 @@ export class Coordinator{
         const tx = BTCWatcher.combine(BTCWatcher.psbtFromHex(this.redemptionState.redemptionSignatures), signature);
         this.redemptionState.redemptionSignatures = tx.toHex();
         await this.redemptionDb.findOneAndUpdate({ index : this.redemptionState.index }, {$set: this.redemptionState}, {upsert: true});
-        try{
             if(tx.data.inputs[0].partialSig.length >= BTCWatcher.getM()){
                 const redemptionTxId = await BTCWatcher.completeAndSubmit(tx);
                 this.redemptionState.state = redemptionState.completed;
@@ -303,7 +303,7 @@ export class Coordinator{
 
             }
         }catch(err){
-            console.log("consolidation error:", err);
+            console.log("redemption signature error:", err);
         }
     }
 
