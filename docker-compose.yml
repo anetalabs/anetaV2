@@ -21,7 +21,8 @@ services:
     ports:
       - "5001:5001"
     volumes:
-      -  ./dolos/preview.toml:/etc/dolos/daemon.toml
+      -  ./dolos/preview/preview.toml:/etc/dolos/daemon.toml
+      -  ./dolos/preview/genesis:/etc/dolos/genesis 
       - ../dolos/data:/data
     entrypoint: ["dolos", "daemon", "--config", "/etc/dolos/daemon.toml"]
   mongo:

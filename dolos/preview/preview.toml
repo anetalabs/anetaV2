@@ -7,9 +7,9 @@ is_testnet = true
 path = "/data"
 
 [genesis]
-byron_path = "byron.json"
-shelley_path = "shelley.json"
-alonzo_path = "alonzo.json"
+byron_path = "/etc/dolos/genesis/byron.json"
+shelley_path = "/etc/dolos/genesis/shelley.json"
+alonzo_path = "/etc/dolos/genesis/alonzo.json"
 
 [sync]
 pull_batch_size = 100
