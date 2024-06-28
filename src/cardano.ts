@@ -474,7 +474,7 @@ export class CardanoWatcher{
         if(tip){
             tipPoint = {index: tip.slot, hash: new Uint8Array(Buffer.from(tip.hash, "hex"))};
         }else{
-            tipPoint = this.config.syncStart
+            tipPoint = {index: this.config.syncStart.slot, hash: new Uint8Array(Buffer.from(this.config.syncStart.hash, "hex"))}
         }
         console.log("Starting sync from tip", tipPoint);
         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers : this.config.utxoRpc.headers} );
