@@ -16,12 +16,13 @@ services:
       - ./config:/config
     ports:
       - "5000:5000"
-  palas:
+  dolos:
     image: ghcr.io/txpipe/dolos:latest
     ports:
       - "5001:5001"
     volumes:
-      -  ./daemon.toml:/etc/dolos/daemon.toml
+      -  ./dolos/preview.toml:/etc/dolos/daemon.toml
+      - ../dolos/data:/data
   mongo:
     image: mongo
     restart: always
