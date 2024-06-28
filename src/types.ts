@@ -94,7 +94,7 @@ export type cardanoConfig = {
     }
     utxoRpc: {
       host: string
-      key: string
+      headers: Record<string, string>
     }
     contract: string
     }

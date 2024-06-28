@@ -454,7 +454,7 @@ export class CardanoWatcher{
 
     async getTip(){
         try{
-         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers: {"dmtr-api-key": this.config.utxoRpc.key}} );
+         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers:  this.config.utxoRpc.headers} );
          
         let tip = await axios.get("https://cardano-preview.blockfrost.io/api/v0/blocks/latest", {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO"}});
         return tip;
@@ -477,7 +477,7 @@ export class CardanoWatcher{
             tipPoint = {index: tip.slot, hash: new Uint8Array(Buffer.from(tip.hash, "hex"))};
         }
         console.log("Starting sync from tip", tipPoint);
-        const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers: {}} );
+        const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers : this.config.utxoRpc.headers} );
         let chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize});
         while(chunk.nextToken ){
             console.time("Chunk")
