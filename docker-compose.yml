@@ -5,24 +5,19 @@ services:
     build:
       context: BtcCore
       dockerfile: dockerfile
-    container_name: bitcoin_node
     ports:
-      - "18332:18332"
+      - "18330:18332"
     volumes:
-      - ./node1:/data
+      - ../data/bitcoin:/data
   guardian-angel:
     build:
       dockerfile: dockerfile
-    container_name: guardian_angel
     volumes:
       - ./config:/config
     ports:
       - "5000:5000"
-    networks:
-      - mynetwork
   palas:
     image: ghcr.io/txpipe/dolos:latest
-    container_name: palas
     ports:
       - "5001:5001"
     volumes:
@@ -36,7 +31,4 @@ services:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: example
     volumes:
-      - ./mongo:/data/db
-networks:
-  mynetwork:
-    external: true
+      - ./data/mongo:/data/db
