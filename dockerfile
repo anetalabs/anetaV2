@@ -29,4 +29,4 @@ COPY --from=builder /app/dist ./dist
 EXPOSE 3000
 
 # Start the application
-CMD [ "node", "dist/index.js",  "--topology", "/app/config/topology.json", "--notificationConfig", "/app/config/notificationConfig.json" ,"--secrets", "/app/config/secrets.json", "--bitcoinConfig", "/app/config/bitcoinConfig.json", "--cardanoConfig", "/app/config/cardanoConfig.json" ]
+CMD [ "node", "dist/index.js",  "--topology", "/app/config/topology.json", "--protocolConfig", "/app/config/protocolConfig.json" ,"--notificationConfig", "/app/config/notificationConfig.json" ,"--secrets", "/app/config/secrets.json", "--bitcoinConfig", "/app/config/bitcoinConfig.json", "--cardanoConfig", "/app/config/cardanoConfig.json" ]
