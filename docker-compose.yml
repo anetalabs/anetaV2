@@ -16,6 +16,7 @@ services:
       - ./config:/config
     ports:
       - "5000:5000"
+      
   dolos:
     image: ghcr.io/txpipe/dolos:latest
     ports:
