@@ -16,11 +16,11 @@ services:
       - ./config:/config
     ports:
       - "5000:5000"
-      
+
   dolos:
     image: ghcr.io/txpipe/dolos:latest
     ports:
-      - "5001:5001"
+      - "50051:50051"
     volumes:
       -  ./dolos/preview/preview.toml:/etc/dolos/daemon.toml
       -  ./dolos/preview/genesis:/etc/dolos/genesis 
