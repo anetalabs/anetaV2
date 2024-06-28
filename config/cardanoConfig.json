@@ -2,10 +2,6 @@
         "DbName" : "cNeta",
         "network": "preview",
         "paymentAddress" : "addr_test1qqjg030vffsy7jav0802dr5unfv06dn5avtqh7028ykrd2l3meyrd8efkt952egccka06epqkye4j9fnrarjjjhrxz2sufjewr",
-        "syncStart" : {
-                "slot": 52900234,
-                "hash": "85347648ade751ba8646bce99d76fdb2b3d2219cc94f9a38710078090782b54b"
-        } ,
         "mongo": {
             "connectionString": "mongodb://mongo:27017"
         },

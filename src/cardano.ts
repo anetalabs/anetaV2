@@ -454,8 +454,10 @@ export class CardanoWatcher{
 
     async getTip(){
         try{
-            let tip = await axios.get("https://cardano-preview.blockfrost.io/api/v0/blocks/latest", {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO"}});
-            return tip;
+         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers:  this.config.utxoRpc.headers} );
+         
+        let tip = await axios.get("https://cardano-preview.blockfrost.io/api/v0/blocks/latest", {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO"}});
+        return tip;
         }catch(e){
         }
     }
@@ -467,14 +469,12 @@ export class CardanoWatcher{
 
     async dumpHistory(){
         try{
-            const chunkSize = 100; 
-            let tip = await this.mongo.collection("height").findOne({type: "top"});
-            console.log("tip" , tip);
-            let tipPoint = undefined ;   
+        const chunkSize = 100; 
+        let tip = await this.mongo.collection("height").findOne({type: "top"});
+        console.log("tip" , tip);
+        let tipPoint = undefined ;   
         if(tip){
             tipPoint = {index: tip.slot, hash: new Uint8Array(Buffer.from(tip.hash, "hex"))};
-        }else{
-            tipPoint = {index: this.config.syncStart.slot, hash: new Uint8Array(Buffer.from(this.config.syncStart.hash, "hex"))}
         }
         console.log("Starting sync from tip", tipPoint);
         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers : this.config.utxoRpc.headers} );
