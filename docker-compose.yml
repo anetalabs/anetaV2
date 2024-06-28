@@ -23,6 +23,7 @@ services:
     volumes:
       -  ./dolos/preview.toml:/etc/dolos/daemon.toml
       - ../dolos/data:/data
+    entrypoint: ["dolos", "daemon", "--config", "/etc/dolos/daemon.toml"]
   mongo:
     image: mongo
     restart: always
