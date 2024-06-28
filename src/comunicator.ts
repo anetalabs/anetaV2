@@ -5,7 +5,6 @@ import { Server, Socket as ServerSocket } from 'socket.io';
 import { Socket as ClientSocket } from 'socket.io-client';
 import  Client  from 'socket.io-client';
 import * as Lucid  from 'lucid-cardano';
-import crypto from 'crypto';
 const HEARTBEAT = 5000;
 const ELECTION_TIMEOUT = 5;
 
@@ -284,7 +283,16 @@ export class Communicator {
     }
 
     private handShake(socket: ServerSocket) : void{
-         const challenge = "challenge" + crypto.randomBytes(32).toString('hex');
+        function generateRandomHex(size: number): string {
+            let result = '';
+            const characters = '0123456789abcdef';
+            const charactersLength = characters.length;
+            for (let i = 0; i < size; i++) {
+              result += characters.charAt(Math.floor(Math.random() * charactersLength));
+            }
+            return result;
+          }
+         const challenge = "challenge" + generateRandomHex(64);
          console.log("Starting handshake")
          socket.emit('challenge', challenge);
          socket.on('challengeResponse', async (response) => {
