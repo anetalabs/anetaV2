@@ -25,7 +25,7 @@ services:
       -  ./dolos/preview/preview.toml:/etc/dolos/daemon.toml
       -  ./dolos/preview/genesis:/etc/dolos/genesis 
       - ../dolos/data:/data
-    entrypoint: sh -c "yes | dolos --config /etc/dolos/daemon.toml bootstrap  && dolos --config /etc/dolos/daemon.toml daemon "  
+    entrypoint: sh -c " dolos --config /etc/dolos/daemon.toml sync  && dolos --config /etc/dolos/daemon.toml daemon "  
   mongo:
     image: mongo
     restart: always
