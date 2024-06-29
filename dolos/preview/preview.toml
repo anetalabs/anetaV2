@@ -28,6 +28,10 @@ magic = 1
 listen_address = "[::]:30031"
 magic = 1
 
+[mithril]
+aggregator = "https://aggregator.release-preprod.api.mithril.network/aggregator"
+genesis_key = "5b3...45d" # redacted
+
 [logging]
 max_level = "INFO"
 include_tokio = false
