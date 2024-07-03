@@ -594,10 +594,11 @@ export class CardanoWatcher{
         let liveTip = await this.getTip();  
         console.log(liveTip.data)
 
+        
         console.log("tip" , tip);
         let tipPoint = undefined ;   
         if(tip){
-            tipPoint = {index: tip.slot, hash: new Uint8Array(Buffer.from(tip.hash, "hex"))};
+            tipPoint = [{slot: tip.slot, hash: new Uint8Array(Buffer.from(tip.hash, "hex"))}];
         }
 
 
