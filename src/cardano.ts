@@ -496,6 +496,8 @@ export class CardanoWatcher{
             chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize});
             console.timeEnd("NextChunkFetch")
         }
+
+        console.log("Done Dumping History");
     }catch(e){
         console.log(e);
       // await this.dumpHistory();
