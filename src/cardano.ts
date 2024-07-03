@@ -468,19 +468,8 @@ export class CardanoWatcher{
 
 
     async dumpHistory(){
-        function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-            // Create a timeout promise
-           const timeoutPromise = new Promise<T>((resolve) => {
-            const id = setTimeout(() => {
-                clearTimeout(id);
-                resolve(null); // Resolve with null instead of rejecting
-            }, timeoutMs);
-        });
-        
-            // Race the original promise against the timeout promise
-            return Promise.race([promise, timeoutPromise]);
-        }
 
+        
         try{
         const chunkSize = 100; 
         let tip = await this.mongo.collection("height").findOne({type: "top"});
@@ -491,7 +480,7 @@ export class CardanoWatcher{
         }
         console.log("Starting sync from tip", tipPoint);
         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers : this.config.utxoRpc.headers} );
-        let chunk = await withTimeout(rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize}), 20000);
+        let chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize})
         console.log("Chunk", chunk);    
         
         while(chunk && chunk.nextToken ){
@@ -507,7 +496,7 @@ export class CardanoWatcher{
             const lastBlock = chunk.block[chunk.block.length - 1].chain.value as CardanoBlock;
             await this.mongo.collection("height").updateOne({type: "top"}, {$set: {hash: Buffer.from(lastBlock.header.hash).toString('hex') , slot: lastBlock.header.slot, height: lastBlock.header.height}}, {upsert: true});
             console.time("NextChunkFetch")
-            chunk = await withTimeout(rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize}), 20000);
+            chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize})
             console.timeEnd("NextChunkFetch")
         }
 
