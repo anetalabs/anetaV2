@@ -604,7 +604,7 @@ export class CardanoWatcher{
 
 
         console.log("Starting indexer from tip", tipPoint);
-        const rcpClient = new CardanoSyncClient({ uri : "https://preview.utxorpc-v0.demeter.run",  headers: {"dmtr-api-key": "dmtr_utxorpc1rutw90zm5ucx4lg9tj56nymnq5j98zlf"}} );
+        const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers : this.config.utxoRpc.headers} );
         const stream =  rcpClient.followTip( tipPoint);
         console.log("Stream", stream);  
         try {
