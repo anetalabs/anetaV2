@@ -494,7 +494,7 @@ export class CardanoWatcher{
         let chunk = await withTimeout(rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize}), 20000);
         console.log("Chunk", chunk);    
         
-        while(chunk.nextToken ){
+        while(chunk && chunk.nextToken ){
             console.time("Chunk")
             console.log(chunk.nextToken)
             tipPoint = chunk.nextToken;
