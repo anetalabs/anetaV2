@@ -479,6 +479,7 @@ export class CardanoWatcher{
         console.log("Starting sync from tip", tipPoint);
         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers : this.config.utxoRpc.headers} );
         let chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize});
+        console.log("Chunk", chunk);    
         while(chunk.nextToken ){
             console.time("Chunk")
             console.log(chunk.nextToken)
