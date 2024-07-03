@@ -1,14 +1,12 @@
 version: '3'
 
 services:
-  bitcoin-node:
+  bitcoin:
     build:
       context: BtcCore
       dockerfile: dockerfile
-    ports:
-      - "18330:18332"
     volumes:
-      - ../data/bitcoin:/data
+      - ../volume/data/bitcoin:/data
   guardian-angel:
     build:
       dockerfile: dockerfile
@@ -16,18 +14,18 @@ services:
       - ./config:/app/config
     ports:
       - "5000:5000"
-
+    restart: always
   dolos:
     image: ghcr.io/txpipe/dolos:latest
-    ports:
-      - "50051:50051"
     volumes:
       -  ./dolos/preview/preview.toml:/etc/dolos/daemon.toml
       -  ./dolos/preview/genesis:/etc/dolos/genesis 
       - ../dolos/data:/data
-    entrypoint: sh -c " dolos --config /etc/dolos/daemon.toml sync  && dolos --config /etc/dolos/daemon.toml daemon "  
+    entrypoint: sh -c " dolos daemon "  
   mongo:
     image: mongo
     restart: always
+    ports:
+      -  "0.0.0.0:27017:27017"
     volumes:
       - ./data/mongo:/data/db
