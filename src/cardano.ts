@@ -598,7 +598,6 @@ export class CardanoWatcher{
         let tipPoint = undefined ;   
         if(tip){
             tipPoint = {index: tip.slot, hash: new Uint8Array(Buffer.from(tip.hash, "hex"))};
-            tipPoint = [{slot: tip.slot, hash: tip.hash}];
         }
 
 
