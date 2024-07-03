@@ -714,7 +714,7 @@ export class CardanoWatcher{
         let tip = await this.mongo.collection("height").findOne({type: "top"});
 
         if(tip && tip.height == block.header.height){
-            console.log("Block replaying tip", block.header.hash);
+            console.log("Block rollback", block.header.hash , block.header.height, tip.height);
             return false;
 
         }else if(tip && tip.height >= block.header.height){
