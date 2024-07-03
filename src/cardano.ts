@@ -498,7 +498,7 @@ export class CardanoWatcher{
         }
     }catch(e){
         console.log(e);
-       await this.dumpHistory();
+      // await this.dumpHistory();
     }
 
 
