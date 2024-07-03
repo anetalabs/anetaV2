@@ -505,7 +505,6 @@ export class CardanoWatcher{
             console.timeEnd("Chunk")
             //set tip to the last block
             const lastBlock = chunk.block[chunk.block.length - 1].chain.value as CardanoBlock;
-            console.log("Last Block", chunk);   
             await this.mongo.collection("height").updateOne({type: "top"}, {$set: {hash: Buffer.from(lastBlock.header.hash).toString('hex') , slot: lastBlock.header.slot, height: lastBlock.header.height}}, {upsert: true});
             console.time("NextChunkFetch")
             chunk = await withTimeout(rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize}), 20000);
@@ -598,6 +597,7 @@ export class CardanoWatcher{
         console.log("tip" , tip);
         let tipPoint = undefined ;   
         if(tip){
+            tipPoint = {index: tip.slot, hash: new Uint8Array(Buffer.from(tip.hash, "hex"))};
             tipPoint = [{slot: tip.slot, hash: tip.hash}];
         }
 
@@ -605,7 +605,6 @@ export class CardanoWatcher{
 
         console.log("Starting indexer from tip", tipPoint);
         const rcpClient = new CardanoSyncClient({ uri : "https://preview.utxorpc-v0.demeter.run",  headers: {"dmtr-api-key": "dmtr_utxorpc1rutw90zm5ucx4lg9tj56nymnq5j98zlf"}} );
-        console.log(rcpClient.inner.dumpHistory)
         const stream =  rcpClient.followTip( tipPoint);
         console.log("Stream", stream);  
         try {
@@ -722,6 +721,7 @@ export class CardanoWatcher{
             throw new Error(`Block already processed ${block.header.height}, registered tip: ${tip.height}`); 
 
         }
+        console.log("New Block", block.header.height);
 
         let blockHash = Buffer.from(block.header.hash).toString('hex');
         this.registerNewBlock(block);
