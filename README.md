@@ -5,6 +5,15 @@ Welcome to the beginning of the AnetaBTC V2 protocol. All code will be published
 
 Track our developmnent journey as we look forward to deploying our V2 protocol on mainnnet. 
 
+Install dokcer and docker-compose on your machine.
+```bash
+sudo apt update
+sudo apt install apt-transport-https ca-certificates curl software-properties-common
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable"
+apt-cache policy docker-ce
+sudo apt install docker-ce
+```
 
 To bootstrap the dolos node using mithril, run the following command: 
 `
