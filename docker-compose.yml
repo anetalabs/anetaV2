@@ -10,6 +10,7 @@ services:
   guardian-angel:
     build:
       dockerfile: dockerfile
+      context: .
     volumes:
       - ./config:/app/config
     ports:
@@ -26,6 +27,6 @@ services:
     image: mongo
     restart: always
     ports:
-      -  "0.0.0.0:27017:27017"
+      -  "127.0.0.1:27017:27017"
     volumes:
       - ./data/mongo:/data/db
