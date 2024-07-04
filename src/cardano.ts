@@ -54,7 +54,7 @@ export class CardanoWatcher{
            this.myKeyHash = this.lucid.utils.getAddressDetails(await this.lucid.wallet.address()).paymentCredential.hash;
            console.log("Address", this.address);
            console.log("Local Address", await this.lucid.wallet.address());    
-           // await this.dumpHistory();
+            await this.dumpHistory();
             this.startIndexer();
         })();
         
