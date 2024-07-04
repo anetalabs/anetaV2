@@ -503,7 +503,7 @@ export class CardanoWatcher{
         console.log("Done Dumping History");
     }catch(e){
         console.log(e);
-      // await this.dumpHistory();
+       await this.dumpHistory();
     }
 
 
