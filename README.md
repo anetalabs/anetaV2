@@ -39,7 +39,7 @@ The guardian angel will start in the preview testnet for Cardano and on the Test
 
 ## Configuration
 
-The config files for the docker deployment can be found under the `config` folder, for the protocol to function properly the `protocol.json` and `topology.json` should be identical! 
+The config files for the docker deployment can be found under the `config` folder, for the protocol to function properly the `protocol.json` and `topology.json` should be identical for all the Guardian angels running the bridge! 
 
 The other config files ajust the way the guardian angel interacts with the blockchain, the `bitcoin.conf` and `cardano.conf` files are the configuration files for the bitcoin and cardano nodes respectively. 
 
