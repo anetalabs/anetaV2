@@ -3,7 +3,7 @@
         "username": "test",
         "password": "123456789",
         "port": 18332,
-        "host": "31.220.94.101",
+        "host": "bitcoin",
         "timeout": 700000
     },
     "falbackFeeRate": 0.00001,

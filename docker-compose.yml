@@ -1,19 +1,43 @@
 version: '3'
 
 services:
-  bitcoin-node:
+  bitcoin:
     build:
       context: BtcCore
       dockerfile: dockerfile
-    container_name: bitcoin_node
-    ports:
-      - "18332:18332"
     volumes:
-      - ./node1:/data
-
-    networks:
-      - mynetwork
-
-networks:
-  mynetwork:
-    external: true
+      - ../volume/data/bitcoin:/data
+  guardian-angel:
+    build:
+      dockerfile: dockerfile
+      context: .
+    volumes:
+      - ./config:/app/config
+    ports:
+      - "3000:3000"
+      - "3030:3030"
+    restart: always
+    depends_on:
+      - mongo 
+      - dolos
+      - bitcoin
+  dolos:
+    image: ghcr.io/txpipe/dolos:latest
+    volumes:
+      -  ./dolos/preview/preview.toml:/etc/dolos/daemon.toml
+      -  ./dolos/preview/genesis:/etc/dolos/genesis 
+      - ../dolos/data:/data
+    entrypoint: sh -c " dolos daemon "  
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost:50051 || exit 1"]
+      interval: 60s
+      retries: 5
+      start_period: 20s
+      timeout: 10s
+  mongo:
+    image: mongo
+    restart: always
+    ports:
+      -  "127.0.0.1:27017:27017"
+    volumes:
+      - ./data/mongo:/data/db
