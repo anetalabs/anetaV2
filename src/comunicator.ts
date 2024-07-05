@@ -574,15 +574,13 @@ export class Communicator {
     
     private async connect(i: number) {
         const peerPort = this.peers[i].port;
-        const socket = Client(`http://localhost:${peerPort}`);
+        const socket = Client(`http://${this.peers[i].ip}:${peerPort}`);
         this.peers[i].outgoingConnection = socket;
 
         socket.on('disconnect', () => {
             console.log('Disconnected from server');
             this.peers[i].outgoingConnection = null;
             this.peers[i].state = NodeStatus.Disconnected;
-
-
         });
 
         socket.on('connect_error', (error) => {
@@ -614,6 +612,7 @@ export class Communicator {
         });
 
     }
+
     leaderBroadcast(method, params= undefined) {
         try{
             this.peers[this.getLeader()].outgoingConnection.emit(method, params);
