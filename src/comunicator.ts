@@ -5,7 +5,6 @@ import { Server, Socket as ServerSocket } from 'socket.io';
 import { Socket as ClientSocket } from 'socket.io-client';
 import  Client  from 'socket.io-client';
 import * as Lucid  from 'lucid-cardano';
-import crypto from 'crypto';
 const HEARTBEAT = 5000;
 const ELECTION_TIMEOUT = 5;
 
@@ -284,7 +283,16 @@ export class Communicator {
     }
 
     private handShake(socket: ServerSocket) : void{
-         const challenge = "challenge" + crypto.randomBytes(32).toString('hex');
+        function generateRandomHex(size: number): string {
+            let result = '';
+            const characters = '0123456789abcdef';
+            const charactersLength = characters.length;
+            for (let i = 0; i < size; i++) {
+              result += characters.charAt(Math.floor(Math.random() * charactersLength));
+            }
+            return result;
+          }
+         const challenge = "challenge" + generateRandomHex(64);
          console.log("Starting handshake")
          socket.emit('challenge', challenge);
          socket.on('challengeResponse', async (response) => {
@@ -295,10 +303,12 @@ export class Communicator {
                 this.applyRuntimeListeners(socket,peerindex);
                 this.peers[peerindex].incomingConnection = socket;
                 this.peers[peerindex].connectionTime = new Date();
+                console.log("Authentication successful for", response.address, ", peer:", peerindex);
                 socket.emit('authenticationAccepted');
                 
             }else{
                 socket.disconnect();
+                console.log("Authentication failed for", response.address , "disconnecting...")
             }
             }
         );
@@ -564,15 +574,13 @@ export class Communicator {
     
     private async connect(i: number) {
         const peerPort = this.peers[i].port;
-        const socket = Client(`http://localhost:${peerPort}`);
+        const socket = Client(`http://${this.peers[i].ip}:${peerPort}`);
         this.peers[i].outgoingConnection = socket;
 
         socket.on('disconnect', () => {
             console.log('Disconnected from server');
             this.peers[i].outgoingConnection = null;
             this.peers[i].state = NodeStatus.Disconnected;
-
-
         });
 
         socket.on('connect_error', (error) => {
@@ -604,6 +612,7 @@ export class Communicator {
         });
 
     }
+
     leaderBroadcast(method, params= undefined) {
         try{
             this.peers[this.getLeader()].outgoingConnection.emit(method, params);

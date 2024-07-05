@@ -1,4 +1,6 @@
-# anetaV2
+# AnetaV2 Guardian Angel implemetation
+
+
 AnetaBTC V2 protocol - secure, decentralized, user-friendly. 
 
 ## Overview
@@ -54,3 +56,4 @@ For more information on the guardian angel and the protocol, please refer to the
 
 
 For more information, go to our website https://anetabtc.io. 
+

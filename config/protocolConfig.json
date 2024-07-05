@@ -1,0 +1,21 @@
+{
+    "fixedFee": 0,
+    "margin": 0.005,
+    "redemptionMargin": 0.005,   
+    "utxoCharge": 0,
+    "maxConsolidationTime" : 3,
+    "consolidationThreshold" : 0.5,
+    "minMint": 10000,
+    "minRedemption": 10000,
+    "btcNetworkFeeMultiplyer": 1.1,
+    "btcNetworkFeeAsyncMultiplyer": 1.3,
+    "maxBtcFeeRate" :  0.008,
+    "mintDeposit": 50,
+    "mintTimeoutMinutes": 120,   
+    "adminAddress":  "addr_test1qrlmv3gjf253v49u8v5psxzwtlf6uljc5xf3a24ehfzcyz32ptyyevm796lgrkz2t5vrx3snmmsfh0ntc333mqf6eagstyc95m",
+    "finality": {
+        "cardano" : 0,
+        "bitcoin" : 0
+    }
+}
+

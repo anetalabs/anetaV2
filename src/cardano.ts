@@ -454,7 +454,7 @@ export class CardanoWatcher{
 
     async getTip(){
         try{
-         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers: {"dmtr-api-key": this.config.utxoRpc.key}} );
+         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers:  this.config.utxoRpc.headers} );
          
         let tip = await axios.get("https://cardano-preview.blockfrost.io/api/v0/blocks/latest", {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO"}});
         return tip;
@@ -468,6 +468,8 @@ export class CardanoWatcher{
 
 
     async dumpHistory(){
+
+        
         try{
         const chunkSize = 100; 
         let tip = await this.mongo.collection("height").findOne({type: "top"});
@@ -477,9 +479,11 @@ export class CardanoWatcher{
             tipPoint = {index: tip.slot, hash: new Uint8Array(Buffer.from(tip.hash, "hex"))};
         }
         console.log("Starting sync from tip", tipPoint);
-        const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers: {"dmtr-api-key": this.config.utxoRpc.key}} );
-        let chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize});
-        while(chunk.nextToken ){
+        const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers : this.config.utxoRpc.headers} );
+        let chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize})
+        console.log("Chunk", chunk);    
+        
+        while(chunk && chunk.nextToken ){
             console.time("Chunk")
             console.log(chunk.nextToken)
             tipPoint = chunk.nextToken;
@@ -490,12 +494,13 @@ export class CardanoWatcher{
             console.timeEnd("Chunk")
             //set tip to the last block
             const lastBlock = chunk.block[chunk.block.length - 1].chain.value as CardanoBlock;
-            console.log("Last Block", chunk);   
             await this.mongo.collection("height").updateOne({type: "top"}, {$set: {hash: Buffer.from(lastBlock.header.hash).toString('hex') , slot: lastBlock.header.slot, height: lastBlock.header.height}}, {upsert: true});
             console.time("NextChunkFetch")
-            chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize});
+            chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize})
             console.timeEnd("NextChunkFetch")
         }
+
+        console.log("Done Dumping History");
     }catch(e){
         console.log(e);
        await this.dumpHistory();
@@ -578,17 +583,17 @@ export class CardanoWatcher{
         let liveTip = await this.getTip();  
         console.log(liveTip.data)
 
+        
         console.log("tip" , tip);
         let tipPoint = undefined ;   
         if(tip){
-            tipPoint = [{slot: tip.slot, hash: tip.hash}];
+            tipPoint = [{slot: tip.slot, hash: new Uint8Array(Buffer.from(tip.hash, "hex"))}];
         }
 
 
 
         console.log("Starting indexer from tip", tipPoint);
-        const rcpClient = new CardanoSyncClient({ uri : "https://preview.utxorpc-v0.demeter.run",  headers: {"dmtr-api-key": "dmtr_utxorpc1rutw90zm5ucx4lg9tj56nymnq5j98zlf"}} );
-        console.log(rcpClient.inner.dumpHistory)
+        const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers : this.config.utxoRpc.headers} );
         const stream =  rcpClient.followTip( tipPoint);
         console.log("Stream", stream);  
         try {
@@ -698,13 +703,14 @@ export class CardanoWatcher{
         let tip = await this.mongo.collection("height").findOne({type: "top"});
 
         if(tip && tip.height == block.header.height){
-            console.log("Block replaying tip", block.header.hash);
+            console.log("Block rollback", block.header.hash , block.header.height, tip.height);
             return false;
 
         }else if(tip && tip.height >= block.header.height){
             throw new Error(`Block already processed ${block.header.height}, registered tip: ${tip.height}`); 
 
         }
+        console.log("New Block", block.header.height);
 
         let blockHash = Buffer.from(block.header.hash).toString('hex');
         this.registerNewBlock(block);

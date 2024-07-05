@@ -88,10 +88,11 @@ export class BitcoinWatcher{
     }
 
     watcherSync = async () => {
-        const isSynced = await this.isNodeSynced();
+        let isSynced = await this.isNodeSynced();
         while (!isSynced) {
             console.log('Bitcoin Node is not synced');
             await new Promise((resolve) => setTimeout(resolve, 5000));
+            isSynced = await this.isNodeSynced();
         }
         
         await this.getUtxos();
