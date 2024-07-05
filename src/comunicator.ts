@@ -303,10 +303,12 @@ export class Communicator {
                 this.applyRuntimeListeners(socket,peerindex);
                 this.peers[peerindex].incomingConnection = socket;
                 this.peers[peerindex].connectionTime = new Date();
+                console.log("Authentication successful for", response.address, ", peer:", peerindex);
                 socket.emit('authenticationAccepted');
                 
             }else{
                 socket.disconnect();
+                console.log("Authentication failed for", response.address , "disconnecting...")
             }
             }
         );
