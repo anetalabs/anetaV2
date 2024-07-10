@@ -77,6 +77,8 @@ export type protocolConfig = {
       cardano: number
       bitcoin: number
     }
+    contract: string
+
 }
 
 export type cardanoConfig = {
@@ -96,7 +98,6 @@ export type cardanoConfig = {
       host: string
       headers: Record<string, string>
     }
-    contract: string
     }
 
 export type notificationConfig = {

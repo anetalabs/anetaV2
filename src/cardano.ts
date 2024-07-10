@@ -34,7 +34,7 @@ export class CardanoWatcher{
 
         this.mongo = getDb(config.DbName)
         console.log(typeof this.mongo)
-        this.mintingScript = {type: "PlutusV2" , script: config.contract};
+        this.mintingScript = {type: "PlutusV2" , script: coordinator.config.contract};
         this.queryValidRequests = this.queryValidRequests.bind(this);
 
 
