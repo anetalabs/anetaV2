@@ -638,7 +638,6 @@ export class BitcoinWatcher{
             return guardianIndex === 0 ? child.derive(index+1).publicKey.toString('hex') : child.derive(0).publicKey.toString('hex'); 
         });
 
-        HexKeys.push(this.fillerKey(index +1));
         const pubkeys = HexKeys.map(key => Buffer.from(key, 'hex'));
         const p2shAddress = bitcoin.payments.p2wsh({
             redeem: bitcoin.payments.p2ms({ m: this.topology.m , pubkeys ,
@@ -673,7 +672,6 @@ export class BitcoinWatcher{
             const child = parent.derive(0);
             return guardianIndex === 0 ? child.derive(index+1).publicKey.toString('hex') : child.derive(0).publicKey.toString('hex'); 
         });
-        HexKeys.push(this.fillerKey(index+1));
         const pubkeys = HexKeys.map(key => Buffer.from(key, 'hex'));
         const p2shAddress = bitcoin.payments.p2wsh({
             redeem: bitcoin.payments.p2ms({ m: this.topology.m , pubkeys ,
@@ -689,11 +687,6 @@ export class BitcoinWatcher{
     }
 
 
-
-    fillerKey(index: number){
-        const indexHex = "0300000000000000000000000000000000000000000000000000000000" + index.toString(16).padStart(8, '0');
-        return indexHex;
-    }
 }
 
 
