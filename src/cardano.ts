@@ -742,7 +742,7 @@ export class CardanoWatcher{
 
     async getUtxoSender(hash : string, index: number){
         const data = await axios.get("https://cardano-preview.blockfrost.io/api/v0/txs/" + hash + "/utxos", {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO"}});
-        return  data.data.inputs[index].address;
+        return  data.data.inputs[0].address;
     }
 
     async registerNewBlock(block: CardanoBlock){
