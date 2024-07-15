@@ -32,17 +32,17 @@ async function main() {
     const protocolConfig : protocolConfig = JSON.parse((await readFile(args.protocolConfig || './protocolConfig.example.json')).toString());
     const server = new ApiServer();
     server.start(args.apiPort || 3030);
-
+    
     connect(cardanoConfig.mongo.connectionString);
-
-
-
-    //////////////////////////////////////////////////////
+    
+    
     communicator = new Communicator(topology, secrets, args.port || 3000)
     notification = new NotificationManager(notificationConfig)
     BTCWatcher = new BitcoinWatcher(bitcoinConfig, topology, secrets);
-    ADAWatcher = new CardanoWatcher(cardanoConfig,  secrets);
+    ADAWatcher = new CardanoWatcher(cardanoConfig,  secrets, protocolConfig);
     coordinator = new Coordinator( protocolConfig);
+
+    //////////////////////////////////////////////////////
     
     // while(!watcher.inSycn()){
     //     await new Promise((resolve) => setTimeout(resolve, LOOP_INTERVAL));

@@ -5,7 +5,7 @@ import pkg from 'blakejs';
 const { blake2bHex } = pkg;
 import * as Lucid  from 'lucid-cardano'
 import { CardanoSyncClient , CardanoBlock } from "@utxorpc/sdk";
-import {cardanoConfig, secretsConfig, mintRequest , MintRequestSchema, RedemptionRequestSchema, utxo, redemptionRequest} from "./types.js"
+import {cardanoConfig, secretsConfig, mintRequest , MintRequestSchema, RedemptionRequestSchema, utxo, redemptionRequest, protocolConfig} from "./types.js"
 import {emitter}  from "./coordinator.js";
 import axios from "axios";
 import { getDb } from "./db.js";
@@ -30,11 +30,11 @@ export class CardanoWatcher{
     private mintQueue: {txHash: string, index: number , targetAddress : string , completed: Date | undefined , created: Date}[] = [];
     private burnQueue: {txHash: string, index: number , completed: Date | undefined , created: Date }[] = [];
 
-    constructor(config: cardanoConfig, secrets: secretsConfig ){
+    constructor(config: cardanoConfig, secrets: secretsConfig, prorocolConfig: protocolConfig){
 
         this.mongo = getDb(config.DbName)
         console.log(typeof this.mongo)
-        this.mintingScript = {type: "PlutusV2" , script: coordinator.config.contract};
+        this.mintingScript = {type: "PlutusV2" , script: prorocolConfig.contract};
         this.queryValidRequests = this.queryValidRequests.bind(this);
 
 
