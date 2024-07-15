@@ -639,6 +639,8 @@ export class BitcoinWatcher{
         });
 
         const pubkeys = HexKeys.map(key => Buffer.from(key, 'hex'));
+        console.log(pubkeys);
+
         const p2shAddress = bitcoin.payments.p2wsh({
             redeem: bitcoin.payments.p2ms({ m: this.topology.m , pubkeys ,
             network: bitcoin.networks[this.config.network], }),
