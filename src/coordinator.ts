@@ -39,7 +39,7 @@ export class Coordinator{
         this.paymentPathsDb = getDb(ADAWatcher.getDbName()).collection("paymentPaths");
         (async () => {
             const documents = await this.redemptionDb.find().sort({ index: -1 }).limit(1).toArray();
-            this.redemptionState = documents[0] || {state: redemptionState.open, index: 0};  
+            this.redemptionState = documents[0] === undefined ?  {state: redemptionState.open, index: 0} : documents[0];  
            
             this.paymentPaths = await Promise.all(
                 Array.from({length: BTCWatcher.getPaymentPaths()}, (_, index) => index).map(async (index) => {
