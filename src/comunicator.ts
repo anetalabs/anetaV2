@@ -274,6 +274,10 @@ export class Communicator {
                 connectionTime: node.connectionTime
             };
         });
+        if(this.peers[this.Iam].state === NodeStatus.Learner && this.countVotes() !== null){
+            this.peers[this.Iam].state = NodeStatus.Follower;
+            this.broadcast('statusUpdate', NodeStatus.Follower);
+        }
 
         emitter.emit('networkingStatus', {peers: peerStatus, leaderTimeout : new Date(this.leaderTimeout).getTime() - new Date().getTime() });
     }
