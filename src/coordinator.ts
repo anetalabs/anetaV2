@@ -139,7 +139,7 @@ export class Coordinator{
     async importRedemption(newRedemptionState: redemptionController){
         try{
             console.log("Importing redemption", newRedemptionState);
-            if(newRedemptionState.index !== this.redemptionState.index + 1) throw new Error("Redemption index is lower than current index");
+            if(newRedemptionState.index >= this.redemptionState.index + 1) throw new Error("Redemption index is lower than current index");
             const redemptionOk = BTCWatcher.checkRedemptionTx(newRedemptionState.currentTransaction, newRedemptionState.burningTransaction);
             
             console.log("Redemption state, current state", newRedemptionState.state, this.redemptionState.state);
