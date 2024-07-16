@@ -9,7 +9,7 @@ import * as bip39 from 'bip39';
 import {BIP32Factory , BIP32Interface} from 'bip32';
 import { emitter } from "./coordinator.js";
 import { utxo } from "./types.js";
-import { hexToString, hash } from "./helpers.js";
+import { hexToString } from "./helpers.js";
 import { ADAWatcher, communicator, coordinator } from "./index.js";
 
 const ECPair =  ECPairFactory(ecc);
@@ -417,7 +417,7 @@ export class BitcoinWatcher{
 
     async signRedemptionTransaction(txHex: string) {
         const txb = bitcoin.Psbt.fromHex(txHex, {network : bitcoin.networks[this.config.network] });
-        const TxHash = await hash(txHex)
+        const TxHash = txHex
       //  console.log("signing redemption transaction" , txHex, hash)
         // check if the transaction is a redemption transaction and if it is in the utxos 
         if(! ADAWatcher.confirmRedemption(TxHash))

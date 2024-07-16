@@ -78,6 +78,7 @@ export type protocolConfig = {
       bitcoin: number
     }
     contract: string
+    adminToken: string
 
 }
 
@@ -92,6 +93,7 @@ export type cardanoConfig = {
       provider: {
         type: string
         host: string
+        projectId: string
       }
     }
     utxoRpc: {

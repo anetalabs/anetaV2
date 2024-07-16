@@ -1,16 +1,14 @@
 import { Db } from "mongodb";
-import { toHexString, txId, hash, hexToString } from "./helpers.js";
-
-import pkg from 'blakejs';
-const { blake2bHex } = pkg;
+import { toHexString, txId,  hexToString } from "./helpers.js";
 import * as Lucid  from 'lucid-cardano'
 import { CardanoSyncClient , CardanoBlock } from "@utxorpc/sdk";
+import {MetadatumArray} from  "@utxorpc/spec/lib/utxorpc/v1alpha/cardano/cardano_pb.js";
 import {cardanoConfig, secretsConfig, mintRequest , MintRequestSchema, RedemptionRequestSchema, utxo, redemptionRequest, protocolConfig} from "./types.js"
 import {emitter}  from "./coordinator.js";
 import axios from "axios";
 import { getDb } from "./db.js";
-import { ADAWatcher, BTCWatcher, communicator, coordinator } from "./index.js";
-import { json } from "stream/consumers";
+import {  BTCWatcher, communicator, coordinator } from "./index.js";
+
 const METADATA_TAG = 85471236584;
 
 export class CardanoWatcher{
@@ -38,18 +36,19 @@ export class CardanoWatcher{
         this.queryValidRequests = this.queryValidRequests.bind(this);
 
 
-
         this.config = config;
 
         (async () => {
-           this.lucid = await Lucid.Lucid.new(new Lucid.Blockfrost(config.lucid.provider.host, "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO"), (config.network.charAt(0).toUpperCase() + config.network.slice(1)) as Lucid.Network);
+
+           this.lucid = await Lucid.Lucid.new(new Lucid.Blockfrost(config.lucid.provider.host, config.lucid.provider.projectId), (config.network.charAt(0).toUpperCase() + config.network.slice(1)) as Lucid.Network);
            this.lucid.selectWalletFromSeed(secrets.seed);
            console.log("Minting Script Address:", this.mintingScript);
            emitter.emit("notification", "Cardano Watcher Ready");
            this.cBTCPolicy = this.lucid.utils.mintingPolicyToId(this.mintingScript);
            console.log("Minting PolicyId:", this.cBTCPolicy);
            this.cBtcHex = "63425443";
-           this.configUtxo =await this.lucid.provider.getUtxoByUnit("a653490ca18233f06e7f69f4048f31ade4e3885750beae0170d7c8ae634e65746142726964676541646d696e");
+           console.log(prorocolConfig.adminToken);
+           this.configUtxo = await this.lucid.provider.getUtxoByUnit(prorocolConfig.adminToken);
            this.address =  this.lucid.utils.credentialToAddress({type: "Script", hash: this.cBTCPolicy});
            this.myKeyHash = this.lucid.utils.getAddressDetails(await this.lucid.wallet.address()).paymentCredential.hash;
            console.log("Address", this.address);
@@ -61,8 +60,15 @@ export class CardanoWatcher{
         console.log("cardano watcher")
     }
 
+
     getDbName() : string{
       return  this.config.DbName;
+    }
+
+    async getAddress() : Promise<Object>{
+        const localAddress = await this.lucid.wallet.address()
+        return { "Prorocol Address" : this.address, "local address" : localAddress};
+       
     }
 
     async submitTransaction(tx: Lucid.TxSigned){
@@ -86,6 +92,14 @@ export class CardanoWatcher{
     }
 
     async burn(requests: redemptionRequest[], redemptionTx: string) : Promise< [Lucid.TxComplete , string]>{
+        const splitIntoChunks = (str, chunkSize) => {
+            const chunks = [];
+            for (let i = 0; i < str.length; i += chunkSize) {
+                chunks.push(str.substring(i, i + chunkSize));
+            }
+            return chunks;
+        };
+        
         try{
             if(communicator.amILeader()){
                 const MultisigDescriptorSchema = Lucid.Data.Object({ 
@@ -93,7 +107,7 @@ export class CardanoWatcher{
                     m: Lucid.Data.Integer(),
                     });
                     
-                const metadata = await hash(redemptionTx);
+                const metadata = splitIntoChunks(redemptionTx, 64);
 
                 type MultisigDescriptor = Lucid.Data.Static<typeof MultisigDescriptorSchema>;
                 const MultisigDescriptor = MultisigDescriptorSchema as unknown as MultisigDescriptor; 
@@ -447,16 +461,11 @@ export class CardanoWatcher{
         }
     }
 
-    
-    
-    
-    
-
     async getTip(){
         try{
          const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers:  this.config.utxoRpc.headers} );
          
-        let tip = await axios.get("https://cardano-preview.blockfrost.io/api/v0/blocks/latest", {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO"}});
+        let tip = await axios.get(`${this.config.lucid.provider.host}/blocks/latest`, {headers: {"project_id": this.config.lucid.provider.projectId}});
         return tip;
         }catch(e){
         }
@@ -687,8 +696,7 @@ export class CardanoWatcher{
     async getBurnByRedemptionTx(redemptionTx: string){
         console.log("Checking Burn", redemptionTx);
        // const hash = await this.(redemptionTx);
-       const metadata = await hash(redemptionTx);
-        const tx = await this.mongo.collection("burn").findOne({ redemptionTx: metadata});
+        const tx = await this.mongo.collection("burn").findOne({ redemptionTx});
         const tip = await this.getTip();
         if(!tx) return false;
         const confirmations = tip.data.height - tx.height;
@@ -715,7 +723,7 @@ export class CardanoWatcher{
         let blockHash = Buffer.from(block.header.hash).toString('hex');
         this.registerNewBlock(block);
         
-        await this.mongo.collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
+       // await this.mongo.collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
         if(!this.syncing )
             emitter.emit("newCardanoBlock")
         
@@ -741,7 +749,7 @@ export class CardanoWatcher{
     }
 
     async getUtxoSender(hash : string, index: number){
-        const data = await axios.get("https://cardano-preview.blockfrost.io/api/v0/txs/" + hash + "/utxos", {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO"}});
+        const data = await axios.get(`${this.config.lucid.provider.host}/txs/${hash}/utxos`, {headers: {"project_id": this.config.lucid.provider.projectId}});
         return  data.data.inputs[0].address;
     }
 
@@ -766,16 +774,16 @@ export class CardanoWatcher{
 
                     
                     console.log("Payments", tx.auxiliary, payments);
-                    this.mongo.collection("mint").insertOne({tx: tx, block: block.header.hash, height: block.header.height,payments });
+                    this.mongo.collection("mint").insertOne({tx: tx, block: Buffer.from(block.header.hash).toString("hex"), height: block.header.height,payments });
                 }
                 
                 else if(asset.mintCoin < 0n){
                     console.log("Burning Transaction", tx);
-                    const redemptionTx = tx.auxiliary.metadata[0]?.value.metadatum.value; 
-                    this.mongo.collection("burn").insertOne({tx: tx, txHash: toHexString( tx.hash),block: block.header.hash, height: block.header.height, redemptionTx });
+                    const redemptionTxraw = tx.auxiliary.metadata[0]?.value.metadatum.value as MetadatumArray 
+                    const redemptionTx = redemptionTxraw.items.map((item) => item.metadatum.value).join("");
+                    this.mongo.collection("burn").insertOne({tx: tx, txHash: toHexString( tx.hash),block: Buffer.from(block.header.hash).toString("hex"), height: block.header.height, redemptionTx });
                 }
             }
         }));
     }
-
 }

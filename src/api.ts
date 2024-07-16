@@ -36,8 +36,9 @@ export default class ApiServer {
         return value;
       }
     });
-    this.app.get('/', (req, res) => {
-      res.send('Hello World!');
+    this.app.get('/',async (req, res) => {
+      res.json(await ADAWatcher.getAddress())
+
     });
 
     this.app.get('/redemptionReqests', (req, res) => {  
