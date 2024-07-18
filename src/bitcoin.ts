@@ -303,6 +303,9 @@ export class BitcoinWatcher{
         if(txString !== tx) throw new Error('Invalid burn transaction hash');
         redemptionRequests = redemptionRequests.filter((request) => txDetails.inputs.find((input) => input.transaction_id === request.txHash && Number(input.index) === request.outputIndex) !== undefined);
         
+        const burenedRequests = txDetails.inputs.map((input) => {
+            return input.transaction_id + input.index;
+        });
 
         if(txDetails.outputs.length !== 1 || txDetails.outputs[0].address !== coordinator.config.adminAddress || txDetails.outputs[0].amount.multiasset !== null ) 
             throw new Error('Invalid burn transaction Output');
@@ -312,10 +315,13 @@ export class BitcoinWatcher{
         
         let totalBurn = 0;
         redemptionRequests.forEach((request) => {
-            const key = request.txHash + request.outputIndex;
-            totalBurn += Number(request.assets[ADAWatcher.getCBtcId()]);
-            if(requestMap.has(key)) throw new Error('Duplicate Redemption Request');
-            requestMap.set(key, request);
+            if(burenedRequests.includes(request.txHash + request.outputIndex)){
+                const key = request.txHash + request.outputIndex;
+                totalBurn += Number(request.assets[ADAWatcher.getCBtcId()]);
+                if(requestMap.has(key)) throw new Error('Duplicate Redemption Request');
+                cTx.body().inputs()
+                requestMap.set(key, request);
+            }
         });
         console.log(Object.keys(txDetails.mint).length,Object.keys(txDetails.mint[ADAWatcher.getCBtcPolicy()]).length,txDetails.mint[ADAWatcher.getCBtcPolicy()][ADAWatcher.getCBtcHex()], -totalBurn )
         
@@ -331,24 +337,20 @@ export class BitcoinWatcher{
         
         txb.txOutputs.forEach((output) => {
             if(output.address !== this.getVaultAddress())
-            {
-
-                
-                const request = redemptionRequests.find((request) => (request.decodedDatum === output.address) && ( coordinator.calculateRedemptionAmount(request) === output.value));
+            {                   
+                const request = [...requestMap.values()].find((request) => (request.decodedDatum === output.address) && ( coordinator.calculateRedemptionAmount(request) === output.value));
+                console.log("request", request)
                 if(request === undefined) throw new Error('Invalid redemption transaction Output(not found)');    
                 
                 if( output.value !== coordinator.calculateRedemptionAmount(request)) throw new Error('Invalid redemption transaction Output(wrong amount) ');
-
-                if(requestMap.has(request.txHash + request.outputIndex)){
-                     requestMap.delete(request.txHash + request.outputIndex)
+                if(requestMap.has(request.txHash + String(request.outputIndex))){
+                     requestMap.delete(request.txHash + String(request.outputIndex))
                 }else{
                     throw new Error('Duplicate Redemption fulfillment');
                 }
-
-                if( requestMap.size !== 0) throw new Error('Not all redemption requests were fulfilled');
-
             }
         });
+        if( requestMap.size !== 0) throw new Error('Not all redemption requests were fulfilled');
 
         return true;
     }
