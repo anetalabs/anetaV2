@@ -67,6 +67,7 @@ export class Communicator {
                     await new Promise((resolve) => setTimeout(resolve, 5000));
                     console.log(`Waiting for ${!ADAWatcher.inSync()? "Cardano-Watcher " : "" }${!BTCWatcher.inSync()? "Bitcoin-Watcher " : "" }sync`);
                 }
+
                 this.start(port);
                 setInterval(this.heartbeat, HEARTBEAT);
                 this.leaderTimeout = new Date();
@@ -152,9 +153,10 @@ export class Communicator {
             
             if (leader !== null) {
                 console.log('Leader elected:', leader);
-                this.peers[leader].state = NodeStatus.Leader;
+                this.peers[leader].state = NodeStatus.Leader; 
                 if(this.Iam !== leader) {
                     this.peers[this.Iam].state = NodeStatus.Follower;
+                    this.queryMissingData();
                     this.broadcast('statusUpdate', NodeStatus.Follower);
                 }
                 this.leaderTimeout = new Date();
@@ -211,6 +213,16 @@ export class Communicator {
     amILeader() : boolean {
         return this.peers[this.Iam].state === NodeStatus.Leader;
     }
+
+    async queryMissingData() {
+       const foundRedemptions = await coordinator.getFoundRedemptions();
+       const  foundRedemptionsRaw = foundRedemptions.map((redemption) => redemption.currentTransaction);
+
+       foundRedemptionsRaw.forEach((redemption) => {
+            this.leaderBroadcast("updateRequest", redemption);
+       });
+    }
+
 
     cardanoTxToComplete(data: pendingCardanoTransaction) {
         if(this.peers[this.Iam].state === NodeStatus.Leader  && !this.transactionsBuffer.find((tx) => tx.txId === data.txId) ){
@@ -320,16 +332,33 @@ export class Communicator {
 
 
     private countVotes() {
-        let leader = null;
+        if (this.peers[this.Iam].state === NodeStatus.Learner) {
+            let votes = this.peers.map((node) => node.votedFor);
+            let max = 0;
+            let candidate = null;
+            votes.forEach((vote) => {
+                if (votes.filter((v) => v === vote).length > max) {
+                    max = votes.filter((v) => v === vote).length;
+                    candidate = vote;
+                }
+            });
+            if (max >= this.topology.m  || 
+                (this.peers[this.Iam].votedFor !== candidate) && max >= this.topology.m - 1) {
+                return candidate;
+            }
+        }
+
+
         for(let i = 0; i < this.peers.length; i++){
           if( this.peers.filter((node) => node.votedFor === i).length >= this.topology.m){
-            leader = i;
+           return i;
           }
 
         }
 
-        return leader;
+        return null;
     }
+
     private getLeader() {
         let leader = null;
         for(let i = 0; i < this.peers.length; i++){
@@ -388,10 +417,8 @@ export class Communicator {
 
         socket.on('queryRedemption', async () => {
             if(this.peers[index].state !== NodeStatus.Leader) return;
-            const redemption = await coordinator.getRedemptionState();
-            if(redemption.state !== redemptionState.open ){
-                this.peers[index].outgoingConnection.emit('newRedemption', redemption);
-            }
+            const redemption = await coordinator.getCurrentRedemption();
+            this.peers[index].outgoingConnection.emit('newRedemption', redemption[0]);
         });
 
         socket.on('signatureRequest', async (data) => {
@@ -447,6 +474,7 @@ export class Communicator {
                         tx.tx = BTCWatcher.combine(tx.tx,data)
                         if(tx.tx.data.inputs[0].partialSig.length >= this.topology.m){
                             tx.status = "completed";
+                            tx.tx.finalizeAllInputs();
                             BTCWatcher.completeAndSubmit(tx.tx).then((txId) => {
                                     console.log("Transaction completed and submitted", txId , tx.type);   
                                 }).catch((err) => {
@@ -471,13 +499,8 @@ export class Communicator {
             try{
             console.log("Burn signature received", signature, "from", this.peers[index].id)
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
-            const burnTx =  ADAWatcher.txCompleteFromString(coordinator.getBurnTx());     
-            const signatureInfo = ADAWatcher.decodeSignature(signature);
-            if (!signatureInfo.witness.vkeys().get(0).vkey().public_key().verify( Buffer.from(burnTx.toHash(), 'hex'), signatureInfo.witness.vkeys().get(0).signature())){
-                console.log("Invalid signature");
-                return;
-            }
-            coordinator.newBurnSignature(signature);
+            
+             await coordinator.newBurnSignature(signature);
             }catch(err){
                 console.log("Error importing burn-transaction signature", err);
             }
@@ -486,7 +509,7 @@ export class Communicator {
         socket.on('newRedemSignature', async (data) => {
             console.log("Redemption signature received", data, "from")
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
-            coordinator.newRedemptionSignature(data.sig, data.index);
+            coordinator.newRedemptionSignature(data.sig);
         });
 
 
@@ -515,6 +538,23 @@ export class Communicator {
             if(this.peers[index].state !== NodeStatus.Leader ) return;
             coordinator.importRedemption(data);
             
+        });
+
+        socket.on('updateRequest', async (data) => {
+            // if not leader, ignore
+            if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
+                
+            const foundData = await  coordinator.getRedemptionState(data);
+            if(foundData!== null){
+                this.peers[index].outgoingConnection.emit('updateResponse', foundData);
+            }
+
+        });
+
+        socket.on('updateResponse', async (data) => {
+            // if message is not from leader, ignore
+            if(this.peers[this.Iam].state !== NodeStatus.Follower) return;
+            coordinator.completeFoundRedemption(data);
         });
         
         socket.on('data', (data) => {

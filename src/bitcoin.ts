@@ -1,15 +1,15 @@
 import BitcoinCore from "bitcoin-core"
 import * as bitcoin from 'bitcoinjs-lib';
 import {ECPairFactory}  from 'ecpair'
-import { TxComplete} from 'lucid-cardano'
+import { TxComplete , C} from 'lucid-cardano'
 import * as ecc  from 'tiny-secp256k1'
 import { EventEmitter } from 'events';
-import {bitcoinConfig, topology, secretsConfig,  redemptionRequest} from "./types.js"
+import {bitcoinConfig, topology, secretsConfig,  redemptionRequest, redemptionState,redemptionController} from "./types.js"
 import * as bip39 from 'bip39';
 import {BIP32Factory , BIP32Interface} from 'bip32';
 import { emitter } from "./coordinator.js";
 import { utxo } from "./types.js";
-import { hexToString } from "./helpers.js";
+import  {METADATA_TAG} from "./cardano.js";
 import { ADAWatcher, communicator, coordinator } from "./index.js";
 
 const ECPair =  ECPairFactory(ecc);
@@ -134,9 +134,10 @@ export class BitcoinWatcher{
     }
 
     completeAndSubmit(txb: bitcoin.Psbt) {
-        txb.finalizeAllInputs();
+        
         const tx = txb.extractTransaction();
         const txHex = tx.toHex();
+        console.log(txHex);
         return this.client.sendRawTransaction(txHex);
     }
 
@@ -243,18 +244,66 @@ export class BitcoinWatcher{
 
     }
 
+    async checkFinalizedRedemptionTx (redemption : redemptionController): Promise <boolean> {
+        console.log("checking redemption transaction")
+
+       // const txb = bitcoin.Psbt.fromHex(redemption.redemptionTx, {network : bitcoin.networks[this.config.network] });
+        const txc = ADAWatcher.txCompleteFromString(redemption.burningTransaction.tx);
+        const [txDetails, cTx] = ADAWatcher.decodeTransaction(txc);
+           // check than no 2 requests are the same by txHash and outputIndex
+        const requestMap = new Map<string, redemptionRequest>();
+        let totalInputValue = 0;
+        let totalOutputValue = 0;
+    
+        // I want to check that the burn is confirmed, that the metadata is correct 
+        console.log(cTx.auxiliary_data().metadata().to_js_value()[String(METADATA_TAG)]["list"])
+        if(txc.toHash() !== redemption.burningTransaction.txId) throw new Error('Invalid burn transaction hash');
+        
+        const burnConfirmed = await ADAWatcher.isBurnConfirmed(redemption.burningTransaction.txId);
+        if(!burnConfirmed) throw new Error('Burn transaction not confirmed');
+
+
+        if(txDetails.outputs.length !== 1 || txDetails.outputs[0].address !== coordinator.config.adminAddress || txDetails.outputs[0].amount.multiasset !== null ) 
+            throw new Error('Invalid burn transaction Output');
+        
+
+
+        // console.log(Object.keys(txDetails.mint).length,Object.keys(txDetails.mint[ADAWatcher.getCBtcPolicy()]).length,txDetails.mint[ADAWatcher.getCBtcPolicy()][ADAWatcher.getCBtcHex()], -totalBurn )
+        
+        // if(Object.keys(txDetails.mint).length !== 1 || Object.keys(txDetails.mint[ADAWatcher.getCBtcPolicy()]).length !== 1 || Number(txDetails.mint[ADAWatcher.getCBtcPolicy()][ADAWatcher.getCBtcHex()]) !== -totalBurn)
+        //         throw new Error('Invalid burn transaction mint');
+            
+        //     console.log("redemptionRequests", redemptionRequests)
+        //     const ValidRedemptionScript = this.getVaultRedeemScript()
+        //     txb.data.inputs.forEach((input) => {
+        //         if(input.witnessScript.toString('hex') !== ValidRedemptionScript) throw new Error('Invalid redemption transaction Input');
+        // });
+
+        
+      
+        return true;
+    
+    
+    }
+        
+
     checkRedemptionTx(tx : string, burnTx : string) : boolean{
+        console.log("checking redemption transaction")
         const txb = bitcoin.Psbt.fromHex(tx, {network : bitcoin.networks[this.config.network] });
         const txc = ADAWatcher.txCompleteFromString(burnTx);
         const [txDetails, cTx] = ADAWatcher.decodeTransaction(txc);
+        const medatadata = JSON.parse(cTx.auxiliary_data().metadata().to_js_value()[String(METADATA_TAG)]);
+        console.log(medatadata)
+        const txString = medatadata.list.map((substring) =>  substring.string ).join("")
         let redemptionRequests =  ADAWatcher.getRedemptionRequests();
            // check than no 2 requests are the same by txHash and outputIndex
         const requestMap = new Map<string, redemptionRequest>();
         let totalInputValue = 0;
         let totalOutputValue = 0;
-        
+        if(txString !== tx) throw new Error('Invalid burn transaction hash');
         redemptionRequests = redemptionRequests.filter((request) => txDetails.inputs.find((input) => input.transaction_id === request.txHash && Number(input.index) === request.outputIndex) !== undefined);
         
+
         if(txDetails.outputs.length !== 1 || txDetails.outputs[0].address !== coordinator.config.adminAddress || txDetails.outputs[0].amount.multiasset !== null ) 
             throw new Error('Invalid burn transaction Output');
         
@@ -312,6 +361,7 @@ export class BitcoinWatcher{
         communicator.sendToLeader("redemptionSignature", txb.toHex());
 
     }
+
     getTxId = (txHex: string) => {
         const txb2 = bitcoin.Psbt.fromHex(txHex, {network : bitcoin.networks[this.config.network] });
         txb2.finalizeAllInputs();
@@ -321,7 +371,6 @@ export class BitcoinWatcher{
 
 
     txEqual = (tx1: string, tx2: string) => {
-        console.log("comparing txs", tx1, tx2)
         const txb1 = bitcoin.Psbt.fromHex(tx1, {network : bitcoin.networks[this.config.network] });
         const txb2 = bitcoin.Psbt.fromHex(tx2, {network : bitcoin.networks[this.config.network] });
         const sortedInputs1 = txb1.txInputs.sort((a, b) => a.hash.toString('hex').localeCompare(b.hash.toString('hex')) || a.index - b.index);
@@ -354,10 +403,9 @@ export class BitcoinWatcher{
             return false;
         }
 
-
         }
 
-
+    
 
     updatePendingFees = async () => {   
         
@@ -455,7 +503,6 @@ export class BitcoinWatcher{
             
         });
 
-        console.log("totalInputValue", totalInputValue)
 
         txb.txOutputs.forEach((output) => {
             totalOutputValue += output.value;
@@ -463,8 +510,6 @@ export class BitcoinWatcher{
         });
 
     
-        console.log("totalOutputValue", totalOutputValue)
-        console.log("fee", totalInputValue - totalOutputValue)
         txb.data.inputs.forEach((input, index) => 
             txb.signInput(index, this.watcherKey)
         );
@@ -490,11 +535,9 @@ export class BitcoinWatcher{
                 if (index >= this.utxos.length - 1 ) throw new Error('Index out of range');
 
                 const addressUtxos = this.utxos[index].utxos;
-                console.log("addressUtxos",indexs , addressUtxos)
                 const redeemScript = Buffer.from(this.getRedeemScript(index), 'hex');
                 
             for (let i = 0; i < addressUtxos.length; i++) {
-                console.log("amount", addressUtxos[i].amount)
                 total += Math.round(this.btcToSat(addressUtxos[i].amount)) ;
                 txb.addInput({
                     hash: addressUtxos[i].txid,
@@ -639,7 +682,6 @@ export class BitcoinWatcher{
         });
 
         const pubkeys = HexKeys.map(key => Buffer.from(key, 'hex'));
-        console.log(pubkeys);
 
         const p2shAddress = bitcoin.payments.p2wsh({
             redeem: bitcoin.payments.p2ms({ m: this.topology.m , pubkeys ,

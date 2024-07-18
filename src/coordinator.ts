@@ -1,11 +1,15 @@
 import { BTCWatcher  , ADAWatcher, communicator, coordinator } from "./index.js";
 import EventEmitter from "events";
 import { requestId } from "./helpers.js";
+import { Tx } from   "@utxorpc/spec/lib/utxorpc/v1alpha/cardano/cardano_pb.js";
 export const emitter = new EventEmitter();
 import { redemptionRequest, mintRequest,  utxo , protocolConfig, MintRequestSchema, redemptionController, redemptionState} from "./types.js";
 import {Psbt} from "bitcoinjs-lib";
 import { getDb } from "./db.js";
 import { Collection } from "mongodb";
+import { CardanoBlock } from "@utxorpc/sdk";
+import { number } from "bitcoinjs-lib/src/script.js";
+import { BitcoinWatcher } from "./bitcoin.js";
 
 enum state {
     open,
@@ -30,7 +34,6 @@ export class Coordinator{
     paymentPaths: paymentPaths[]
     paymentPathsDb: Collection<paymentPaths>
     config: protocolConfig
-    redemptionState: redemptionController
     redemptionDb: Collection<redemptionController>
 
     constructor( protocol: protocolConfig){
@@ -38,8 +41,6 @@ export class Coordinator{
         this.redemptionDb = getDb(ADAWatcher.getDbName()).collection("redemptionState");
         this.paymentPathsDb = getDb(ADAWatcher.getDbName()).collection("paymentPaths");
         (async () => {
-            const documents = await this.redemptionDb.find().sort({ index: -1 }).limit(1).toArray();
-            this.redemptionState = documents[0] === undefined ?  {state: redemptionState.open, index: 0} : documents[0];  
            
             this.paymentPaths = await Promise.all(
                 Array.from({length: BTCWatcher.getPaymentPaths()}, (_, index) => index).map(async (index) => {
@@ -57,6 +58,20 @@ export class Coordinator{
 
     }
 
+    async getCurrentRedemption() : Promise<Array<redemptionController>> {
+        const latest = await this.redemptionDb.find().sort({ index: -1 }).limit(1).toArray();
+        if(latest.length === 0) return [];
+        const documents  = await this.redemptionDb.find({ index: latest[0].index }).sort({ alternative: -1 }).toArray();
+        return documents.length === 0 ? [] : documents;
+    }
+
+    async getFoundRedemptions() : Promise<Array<redemptionController>> {
+        return await this.redemptionDb.find({ state : redemptionState.found }).toArray();
+    }
+
+    async getRedemptionState(currentTransaction: string) : Promise<redemptionController>{
+        return this.redemptionDb.findOne({ currentTransaction , state: redemptionState.finalized } );
+    }
     
     async getOpenRequests(){
         let [mintRequests , redemptionRequests] = await ADAWatcher.queryValidRequests();
@@ -106,7 +121,12 @@ export class Coordinator{
             }
         });
 
-        if (redemptionRequests.length > 0 && [redemptionState.open, redemptionState.finalized].includes(this.redemptionState.state)) {
+        if (redemptionRequests.length > 0 ) {
+            const redemptions = await this.getCurrentRedemption();
+            console.log("Redemptions", redemptions);
+            const redemptionAvaiable = redemptions.length === 0 || redemptions.some((redemption) => [ redemptionState.finalized , redemptionState.found].includes(redemption.state));
+            console.log("Redemption available", redemptionAvaiable, redemptions.length === 0, redemptions.some((redemption) => [ redemptionState.finalized , redemptionState.found].includes(redemption.state) ));
+            if(redemptionAvaiable)
             try {
                 if(communicator.amILeader()){
                     let [currentTransaction, requests] = await BTCWatcher.craftRedemptionTransaction(redemptionRequests);
@@ -131,35 +151,53 @@ export class Coordinator{
         
     }
 
-    getRedemptionState(){
-        return this.redemptionState;
-        
+    async completeFoundRedemption(data: redemptionController) {
+        try{
+            const redemption = await this.redemptionDb.findOne({ currentTransaction : data.currentTransaction });
+            if(redemption === null) throw new Error("Redemption not found");
+            if(redemption.state !== redemptionState.found) throw new Error("Redemption not in found state");
+            if(data.state !== redemptionState.finalized) throw new Error("Redemption not in finalized state");
+            const redemptionOk = BTCWatcher.checkFinalizedRedemptionTx(data);
+            if (!redemptionOk) throw new Error("Redemption transaction is not valid");
+            const cleanData = data
+            delete cleanData["_id"];
+            await this.redemptionDb.findOneAndUpdate({ currentTransaction : data.currentTransaction , state : redemptionState.found }, { $set: data });
+       
+        }catch(e){
+            console.log("Error completing found redemption", e);
+        }
     }
+
 
     async importRedemption(newRedemptionState: redemptionController){
         try{
+            const redemptions = await this.getCurrentRedemption();
+            const currentRedemptionState = redemptions[0]
             console.log("Importing redemption", newRedemptionState);
-            if(newRedemptionState.index < this.redemptionState.index + 1) throw new Error("Redemption index is lower than current index");
-            const redemptionOk = BTCWatcher.checkRedemptionTx(newRedemptionState.currentTransaction, newRedemptionState.burningTransaction);
+            const redemptionOk = BTCWatcher.checkRedemptionTx(newRedemptionState.currentTransaction, newRedemptionState.burningTransaction.tx);
+            if (!redemptionOk) throw new Error("Redemption transaction is not valid");
             
-            console.log("Redemption state, current state", newRedemptionState.state, this.redemptionState.state);
-            if( ![redemptionState.open, redemptionState.finalized, redemptionState.forged].includes(this.redemptionState.state) ) throw new Error("Redemption already in progress");
+            if(redemptions.length !== 0){
 
-            if(this.redemptionState.state === redemptionState.forged){
-                if ( communicator.checkAdaQuorum(ADAWatcher.getTxSigners(this.redemptionState.burningTransaction) )){
-                     throw new Error("Redemption already forged, waiting for burn signatures");
-                }else{
-                    console.log("Quorum not met, recreating redemption transaction");
-                    this.redemptionState.state = redemptionState.cancelled;
-                    await this.redemptionDb.findOneAndUpdate({ index : this.redemptionState.index }, { $set: this.redemptionState }, { upsert: true });
+                if (currentRedemptionState.state === redemptionState.found && currentRedemptionState.currentTransaction !== newRedemptionState.currentTransaction){
+                    console.log("Found redemption already exists, updating to forged");
+                    await this.redemptionDb.findOneAndUpdate({ index : currentRedemptionState.index, alternative: currentRedemptionState.alternative  }, { $set: newRedemptionState });
+                    return;
                 }
                 
-              }
+                if(newRedemptionState.index === currentRedemptionState.index + 1) {
+                    if(! redemptions.some(redemption => redemption.state === redemptionState.finalized)  ) throw new Error("Redemption already in progress");
+                }else if(newRedemptionState.index === currentRedemptionState.index && newRedemptionState.alternative !== currentRedemptionState.alternative +1 ) {
+                    if(currentRedemptionState.state === redemptionState.forged){
+                        if ( communicator.checkAdaQuorum(ADAWatcher.getTxSigners(currentRedemptionState.burningTransaction.tx) )){
+                            throw new Error("Redemption already forged, waiting for burn signatures");
+                    }
+                }
 
-            if (!redemptionOk) throw new Error("Redemption transaction is not valid");
+            }
+        }
 
-            this.redemptionState = newRedemptionState;
-            await this.redemptionDb.findOneAndUpdate({ index : this.redemptionState.index }, { $set: this.redemptionState }, { upsert: true });
+        await this.redemptionDb.findOneAndUpdate({ index : newRedemptionState.index , alternative : newRedemptionState.alternative}, { $set: newRedemptionState }, { upsert: true });
         }catch(e){
             console.log("Error in importing redemption", e);
         }
@@ -168,39 +206,52 @@ export class Coordinator{
     async newRedemption(currentTransaction: Psbt ,redemptionRequests: redemptionRequest[]) {
         console.log("Staring New redemption")
         try {
+            const currentRedemptions = await this.getCurrentRedemption();
             const [burnTx, signature ] = (await ADAWatcher.burn(redemptionRequests, currentTransaction.toHex()))
             const redemptionOk = BTCWatcher.checkRedemptionTx(currentTransaction.toHex(), burnTx.toString());
-        
-        if (!redemptionOk) throw new Error("Redemption transaction is not valid");
+            if(!redemptionOk) throw new Error("Redemption transaction is not valid");
+            
 
-        if (![redemptionState.open, redemptionState.finalized, redemptionState.forged].includes(this.redemptionState.state) ) throw new Error("Redemption already in progress");
-
-        if(this.redemptionState.state === redemptionState.forged){ 
-            if ( communicator.checkAdaQuorum(ADAWatcher.getTxSigners(this.redemptionState.burningTransaction) )){
-                throw new Error("Redemption already forged, waiting for burn signatures");
-            }else{
-                    console.log("Quorum not met, recreating redemption transaction");
-                    this.redemptionState.state = redemptionState.cancelled;
-                    await this.redemptionDb.findOneAndUpdate({ index : this.redemptionState.index }, { $set: this.redemptionState }, { upsert: true });
+            let index = 0;
+            let alternative = 0;
+            if(currentRedemptions.length !== 0){
+                index = currentRedemptions[0].index;
+                alternative = currentRedemptions[0].alternative ;
+                if(currentRedemptions[0].state === redemptionState.forged){ 
+                    if ( communicator.checkAdaQuorum(ADAWatcher.getTxSigners(currentRedemptions[0].burningTransaction.tx) )){
+                        throw new Error("Redemption already forged, waiting for burn signatures");
+                    }else{
+                            console.log("Quorum not met, recreating redemption transaction");
+                            alternative += 1;
+                    }
+                }else if(currentRedemptions[0].state === redemptionState.found){
+                    if(currentRedemptions[0].currentTransaction === currentTransaction.toHex()) {
+                        console.log("Redemption found, updating to forged");
+                    }else {
+                        index += 1;
+                    }
+                    
+                }else{
+                    index += 1;
+                    if (currentRedemptions[0].state !== redemptionState.finalized ) throw new Error("Redemption already in progress");
+                }
             }
-        }
 
-        this.redemptionState = {
-            index: this.redemptionState.index + 1 , 
-            state: redemptionState.forged,
-            currentTransaction: currentTransaction.toHex(),
-            burningTransaction: burnTx.toString(),
-            burnSignatures: [signature],
-        };
-            // this.redemptionState.burningTransaction = burnTx.toString();
-            // this.redemptionState.currentTransaction = currentTransaction.toHex();
-            // this.redemptionState.burnSignatures = [signature];
-            // this.redemptionState.state = redemptionState.forged;
-            // this.redemptionState.index = this.redemptionState.index + 1;
-            // store the transaction in the database
+        const newRedemptionState : redemptionController = {
+                index: index,
+                alternative: alternative,
+                state: redemptionState.forged,
+                currentTransaction: currentTransaction.toHex(),
+                burningTransaction: {
+                    tx : burnTx.toString(),
+                    txId: burnTx.toHash(),
+                    signatures: [signature],
+                },
+            };
+
              
-            await this.redemptionDb.findOneAndUpdate({ index : this.redemptionState.index  }, { $set: this.redemptionState }, { upsert: true });
-            if(communicator.amILeader) communicator.broadcast("newRedemption", this.redemptionState);
+            await this.redemptionDb.findOneAndUpdate({ index : index, alternative: alternative  }, { $set: newRedemptionState }, { upsert: true });
+            if(communicator.amILeader) communicator.broadcast("newRedemption", newRedemptionState);
         }catch(e){
             console.log("Error in new redemption", e);
         }
@@ -229,6 +280,8 @@ export class Coordinator{
       await this.getOpenRequests(); 
       await this.checkTimeout(); 
       await this.checkBurn(); 
+      await this.completeRedemption();
+      
     }
 
     async onNewBtcBlock(){
@@ -237,91 +290,160 @@ export class Coordinator{
         this.checkRedemption();
     }
 
-    getBurnTx(){
-        return this.redemptionState.burningTransaction;
+    async getBurnTx(){
+        return (await this.getCurrentRedemption())[0].burningTransaction.tx ;
     }
 
     async newBurnSignature(signature: string){
-        if(this.redemptionState.state !== redemptionState.forged) return;
-
-        if(!this.redemptionState.burnSignatures.includes(signature)) 
-            this.redemptionState.burnSignatures.push(signature);
-
-        if(this.redemptionState.burnSignatures.length >= BTCWatcher.getM()){ 
-            const burnTx =  ADAWatcher.txCompleteFromString(this.getBurnTx());     
-            const completedTx = (await burnTx.assemble(this.redemptionState.burnSignatures).complete())
-            ADAWatcher.submitTransaction(completedTx);
-            console.log("Burn signatures complete", burnTx);
-        }
+            const redemptionStates = await this.getCurrentRedemption();
+            console.log("New burn signature", signature , redemptionStates);
+            if(redemptionStates.length === 0) return;
+           for(const redemption of redemptionStates) {
+                const burnTx =  ADAWatcher.txCompleteFromString(redemption.burningTransaction.tx);     
+                    const signatureInfo = ADAWatcher.decodeSignature(signature);
+                    if (!signatureInfo.witness.vkeys().get(0).vkey().public_key().verify( Buffer.from(burnTx.toHash(), 'hex'), signatureInfo.witness.vkeys().get(0).signature())){
+                        console.log("Invalid signature");
+                        return;
+                    }
+        
+                if(redemption.state !== redemptionState.forged) return;
+        
+                if(!redemption.burningTransaction.signatures.includes(signature)) 
+                    redemption.burningTransaction.signatures.push(signature);
+        
+                if(redemption.burningTransaction.signatures.length >= BTCWatcher.getM()){ 
+                    const burnTx =  ADAWatcher.txCompleteFromString(redemption.burningTransaction.tx);     
+                    const completedTx = (await burnTx.assemble(redemption.burningTransaction.signatures).complete())
+                    ADAWatcher.submitTransaction(completedTx);
+                    console.log("Burn signatures complete", burnTx);
+                }
+            } ;
     }
 
-    async updateRedemptionToComplete(data: { index: number, tx: string}){
-        console.log("Updating redemption to complete", data);
-        const redemption = await this.redemptionDb.findOne({ index : data.index });
-
-        if(redemption.state >= redemptionState.completed) return;
+    async updateRedemptionToComplete(data: { tx: string}){
+    try{
+        const redemption = await this.redemptionDb.findOne({ state : redemptionState.burned });
         
+        const psbt = BTCWatcher.psbtFromHex(data.tx);
+
         if(BTCWatcher.txEqual(redemption.currentTransaction, data.tx) && redemption.state === redemptionState.burned ){
             console.log("Redemption finalized, updating to completed"); 
-            
-            redemption.redemptionTxId = BTCWatcher.getTxId(data.tx);
-            redemption.state = redemptionState.completed;
+        //    if (psbt.data.inputs[0].partialSig.length !== BTCWatcher.getM()) throw new Error("Redemption not fully signed");
+        //    if (!psbt.data.inputs.every(input => input.finalScriptSig || input.finalScriptWitness)) throw new Error("Not all inputs are finalized");
+           
             redemption.redemptionSignatures = data.tx;
+            redemption.redemptionTxId = psbt.extractTransaction().getId();
+            redemption.redemptionTx = psbt.toHex();
+            redemption.state = redemptionState.completed;
             this.redemptionDb.findOneAndUpdate({ index : redemption.index }, {$set: redemption}, {upsert: true});
-            if(redemption.index === this.redemptionState.index){
-                this.redemptionState = redemption;
-            }
 
-            BTCWatcher.completeAndSubmit(BTCWatcher.psbtFromHex(data.tx)).then((txId) => {
-                console.log("Transaction completed and submitted", txId , "redemption");   
-           }).catch((err) => {
-               console.log("Error completing and submitting transaction", err);
-           });
             this.checkRedemption();
         }
-        
+        }catch(err){
+            console.log("Error updating redemption to complete", err);
+        }
     }
 
-    async newRedemptionSignature(signature: string, redemptionIndex : number){
-        try{
-        if(this.redemptionState.state >= redemptionState.completed || this.redemptionState.index !== redemptionIndex) {
-            const redemption = await this.redemptionDb.findOne({ index : redemptionIndex });
-            communicator.broadcast("updateRedemptionToComplete", {  index: redemption.index , tx: redemption.redemptionSignatures});
-        }
-        
-        if(this.redemptionState.state !== redemptionState.burned) return;
+    async newRedemptionSignature(signature: string){
+    try{
+        const redemption = await this.redemptionDb.findOne({ state : redemptionState.burned });
+        console.log("New redemption signature", signature , redemption);
 
-        const tx = BTCWatcher.combine(BTCWatcher.psbtFromHex(this.redemptionState.redemptionSignatures), signature);
-        this.redemptionState.redemptionSignatures = tx.toHex();
-        await this.redemptionDb.findOneAndUpdate({ index : this.redemptionState.index }, {$set: this.redemptionState}, {upsert: true});
-            if(tx.data.inputs[0].partialSig.length >= BTCWatcher.getM()){
-                const redemptionTxId = await BTCWatcher.completeAndSubmit(tx);
-                this.redemptionState.state = redemptionState.completed;
-                this.redemptionState.redemptionTxId = redemptionTxId;
-                await this.redemptionDb.findOneAndUpdate({ index : this.redemptionState.index }, {$set: this.redemptionState}, {upsert: true});
-                communicator.broadcast("updateRedemptionToComplete", {  index: this.redemptionState.index , tx: this.redemptionState.redemptionSignatures});
+        if(redemption === null) {
+            const completedRedemption = await this.redemptionDb.findOne({ state :  redemptionState.completed });
+            if(completedRedemption !== null)
+                communicator.broadcast("updateRedemptionToComplete", {  tx: completedRedemption.redemptionTx});
+            else{
+                const finalizedRedemption = await this.redemptionDb.find({ state :  redemptionState.finalized }).sort({ index: -1 }).limit(1).toArray();
+                finalizedRedemption.forEach((redemption) => {
+                    if( BTCWatcher.txEqual(redemption.redemptionSignatures, signature)){
+                        communicator.broadcast("updateRedemptionToComplete", {  tx: redemption.redemptionTx});
+                        return;
+                    }
+                });
 
             }
+            return ;
+        }
+        
+        const psbt = BTCWatcher.psbtFromHex(redemption.redemptionSignatures)
+
+        if (psbt.data.inputs[0].partialSig.length >= BTCWatcher.getM()) return;
+        const tx = BTCWatcher.combine(psbt, signature);
+
+        redemption.redemptionSignatures = tx.toHex();
+
+        await this.redemptionDb.findOneAndUpdate({ index : redemption.index ,alternative : redemption.alternative  }, {$set: redemption});
+        if(tx.data.inputs[0].partialSig.length >= BTCWatcher.getM()){
+            tx.finalizeAllInputs();
+            const redemptionTxId = await BTCWatcher.completeAndSubmit(tx);
+            redemption.state = redemptionState.completed;
+            redemption.redemptionTxId = redemptionTxId;
+            redemption.redemptionTx = tx.toHex();
+            await this.redemptionDb.findOneAndUpdate({ index : redemption.index, alternative : redemption.alternative }, {$set: redemption});
+            communicator.broadcast("updateRedemptionToComplete", {  tx: redemption.redemptionTx});
+
+        }
         }catch(err){
             console.log("redemption signature error:", err);
         }
     }
 
-    async checkBurn(){
-        if(this.redemptionState.state === redemptionState.forged ){
-            console.log("Checking burn", this.redemptionState.burningTransaction);
-            if(await ADAWatcher.isBurnConfirmed(this.redemptionState.burningTransaction)){
-                this.redemptionState.state = redemptionState.burned;
-                await this.redemptionDb.findOneAndUpdate({ index : this.redemptionState.index }, {$set: this.redemptionState}, {upsert: true});
-                return; 
-            }
+    async loadBurn(tx : Tx, block : CardanoBlock, redemptionTx: string){
 
+        console.log("Loading burn", tx.toJson(),  redemptionTx);   
+        const listing = await this.redemptionDb.findOne({ currentTransaction : redemptionTx });
+        if(listing === null){
+            const redemptions = await this.getCurrentRedemption();
+            let  index : number
+            let  alternative : number
+            if(redemptions.length === 0){
+                index = 0;
+                alternative = 0;
+            }else{
+                index = redemptions[0].index+1;
+                alternative = redemptions[0].alternative ;
+            }
+            const redemption : redemptionController = {
+                index,
+                alternative: alternative,
+                state: redemptionState.found,
+                currentTransaction: redemptionTx,
+                burningTransaction: {
+                    tx: "",
+                    txId:  Buffer.from(tx.hash).toString('hex'),
+                    signatures: []
+                }
+            }
+            await this.redemptionDb.findOneAndUpdate({ index , alternative}, {$set: redemption}, {upsert: true});
+        }
+
+    }
+
+    async checkBurn(){
+        let redemptions = await this.getCurrentRedemption();
+        if(redemptions.length === 0) return;
+
+        redemptions.map(async (redemption) => {
+            if(redemption.state !== redemptionState.forged) return;
+            if(await ADAWatcher.isBurnConfirmed(redemption.burningTransaction.txId)){
+                    await this.redemptionDb.findOneAndUpdate({ index : redemption.index, alternative : redemption.alternative }, {$set:  { state: redemptionState.burned }}, {upsert: true});
+                    await this.redemptionDb.updateMany({ index : redemption.index, state : redemptionState.forged  }, { $set: { state: redemptionState.cancelled } });
+                    this.checkRedemption();
+                    return; 
+                }
+            
+      
+        });
+
+        redemptions = await this.getCurrentRedemption();
+        if(redemptions[0].state === redemptionState.forged){
             if(communicator.amILeader()) {
-                const quorum = ADAWatcher.getTxSigners(this.redemptionState.burningTransaction);
+                const quorum = ADAWatcher.getTxSigners(redemptions[0].burningTransaction.tx);
                 if(communicator.checkAdaQuorum(quorum)){
                 
                     console.log("Quorum healty, retrying signing burn");
-                    communicator.broadcast("newRedemption", this.redemptionState);
+                    communicator.broadcast("newRedemption", redemptions[0]);
                 }else{
                     console.log("Quorum member offline, recreating redemption transaction");
 
@@ -332,37 +454,40 @@ export class Coordinator{
                 }
             }
             else{
-                ADAWatcher.signBurn(this.redemptionState.burningTransaction);
+                ADAWatcher.signBurn(redemptions[0].burningTransaction.tx);
             }
-
-        }
-
-        
-        if(this.redemptionState.state === redemptionState.burned){
-            const sig =  await BTCWatcher.signRedemptionTransaction(this.redemptionState.currentTransaction);
-            if(communicator.amILeader()){
-                this.redemptionState.redemptionSignatures = sig;
-            }else{
-                //sleep 2 sec and broadcast signature
-                await new Promise((resolve) => setTimeout(resolve, 2000));
-                communicator.leaderBroadcast("newRedemSignature", {sig, index:  this.redemptionState.index});
-            }
-
-            await this.redemptionDb.findOneAndUpdate({ index : this.redemptionState.index }, {$set: this.redemptionState}, {upsert: true});
-            
         }
     }
  
+    async completeRedemption(){
+        const burnedRedemption = await this.redemptionDb.findOne({ state : redemptionState.burned });
+
+        if(burnedRedemption !== null){
+            const sig =  await BTCWatcher.signRedemptionTransaction(burnedRedemption.currentTransaction);
+            if(communicator.amILeader()){ 
+                if( burnedRedemption.redemptionSignatures === undefined)
+                    await this.redemptionDb.findOneAndUpdate({ index : burnedRedemption.index , alternative : burnedRedemption.alternative }, {$set: {redemptionSignatures : sig} });
+            }else{
+                //sleep 2 sec and broadcast signature
+                await new Promise((resolve) => setTimeout(resolve, 2000));
+                communicator.leaderBroadcast("newRedemSignature", {sig});
+            }            
+        }
+    }
+
     async checkRedemption(){
+        
+
         console.log("Checking redemption");
+
         const redemptions = await this.redemptionDb.find({state : redemptionState.completed}).toArray();
+
+
         redemptions.forEach(async (redemption) => {
-         if(await BTCWatcher.isTxConfirmed(this.redemptionState.redemptionTxId)){
-            redemption.state = redemptionState.finalized;
-            await this.redemptionDb.findOneAndUpdate({ index : redemption.index }, {$set: redemption}, {upsert: true});
-            if(redemption.index === this.redemptionState.index){
-                this.redemptionState = redemption;
-            }
+         if(await BTCWatcher.isTxConfirmed(redemption.redemptionTxId)){
+
+            await this.redemptionDb.findOneAndUpdate({ state : redemptionState.completed  }, {$set: {state : redemptionState.finalized}});
+          
          }
         });
     }

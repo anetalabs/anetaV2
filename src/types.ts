@@ -100,6 +100,10 @@ export type cardanoConfig = {
       host: string
       headers: Record<string, string>
     }
+    startPoint?: {
+      slot: number
+      hash: string
+    }
     }
 
 export type notificationConfig = {
@@ -140,9 +144,13 @@ export type utxo = {
 export interface redemptionController{
   state : redemptionState,
   index: number,
-  currentTransaction?: string,
-  burnSignatures?: string[],
-  burningTransaction?: string,
+  alternative: number,
+  currentTransaction: string,
+  burningTransaction: {
+    tx: string, 
+    txId: string , 
+    signatures: string[]
+  },
   redemptionSignatures?: string,
   redemptionTxId?: string,
   redemptionTx?: string
@@ -150,7 +158,7 @@ export interface redemptionController{
 
 
 export enum redemptionState{
-  open,
+  found,
   forged,
   burned,
   completed,

@@ -9,7 +9,7 @@ import axios from "axios";
 import { getDb } from "./db.js";
 import {  BTCWatcher, communicator, coordinator } from "./index.js";
 
-const METADATA_TAG = 85471236584;
+export const METADATA_TAG = 85471236584;
 
 export class CardanoWatcher{
     private mongo: Db;
@@ -133,7 +133,7 @@ export class CardanoWatcher{
                 const assets = {} 
                 assets[this.cBTCPolicy + this.cBtcHex] = -requests.reduce((acc, request) => acc + Number(request.assets[this.cBTCPolicy +  this.cBtcHex]) , 0);
                 const mintTx = this.lucid.newTx().attachMintingPolicy(this.mintingScript).mintAssets(assets, Lucid.Data.void()).attachMetadata(METADATA_TAG, metadata);
-                // 4 hours later than now 
+                // 4 hours later than now f
 
 
                 const ttl = this.lucid.newTx().validTo(new Date().getTime() + 14400000);
@@ -482,10 +482,12 @@ export class CardanoWatcher{
         try{
         const chunkSize = 100; 
         let tip = await this.mongo.collection("height").findOne({type: "top"});
-        console.log("tip" , tip);
+        console.log("tip" , tip, this.config.startPoint);
         let tipPoint = undefined ;   
         if(tip){
             tipPoint = {index: tip.slot, hash: new Uint8Array(Buffer.from(tip.hash, "hex"))};
+        }else if(this.config.startPoint){
+            tipPoint = {index: this.config.startPoint.slot, hash: new Uint8Array(Buffer.from(this.config.startPoint.hash, "hex"))};
         }
         console.log("Starting sync from tip", tipPoint);
         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers : this.config.utxoRpc.headers} );
@@ -496,14 +498,12 @@ export class CardanoWatcher{
             console.time("Chunk")
             console.log(chunk.nextToken)
             tipPoint = chunk.nextToken;
-            await Promise.all( chunk.block.map( (block) => {
+            for (const block of chunk.block) {
                 //console.log("Block:",  block);
-                this.registerNewBlock(block.chain.value as CardanoBlock);
-            }));
+                this.handleNewBlock(block.chain.value as CardanoBlock);
+            };
             console.timeEnd("Chunk")
             //set tip to the last block
-            const lastBlock = chunk.block[chunk.block.length - 1].chain.value as CardanoBlock;
-            await this.mongo.collection("height").updateOne({type: "top"}, {$set: {hash: Buffer.from(lastBlock.header.hash).toString('hex') , slot: lastBlock.header.slot, height: lastBlock.header.height}}, {upsert: true});
             console.time("NextChunkFetch")
             chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize})
             console.timeEnd("NextChunkFetch")
@@ -679,14 +679,13 @@ export class CardanoWatcher{
         return  confirmations>=  coordinator.config.finality.cardano;
     }
 
-    async isBurnConfirmed(txComplete : string){
-        const txHash = this.txCompleteFromString(txComplete).toHash();
+    async isBurnConfirmed(txId : string){
 
-        console.log("Checking Burn", txHash);
-        const tx = await this.mongo.collection("burn").findOne({ txHash: txHash});
+        console.log("Checking Burn", txId);
+        const tx = await this.mongo.collection("burn").findOne({ txHash: txId});
         console.log("Burn", tx);
         const tip = await this.getTip();
-        if(!tx) return false;
+        if(!tx) return false; 
         const confirmations = tip.data.height - tx.height;
         return  confirmations >= coordinator.config.finality.cardano;
     }
@@ -708,26 +707,29 @@ export class CardanoWatcher{
     }
     
     async handleNewBlock(block: CardanoBlock) : Promise<Boolean>{
-        let tip = await this.mongo.collection("height").findOne({type: "top"});
+        try{
+            let tip = await this.mongo.collection("height").findOne({type: "top"});
 
-        if(tip && tip.height == block.header.height){
-            console.log("Block rollback", block.header.hash , block.header.height, tip.height);
-            return false;
+            if(tip && tip.height == block.header.height){
+                console.log("Block rollback", block.header.hash , block.header.height, tip.height);
+                return false;
 
-        }else if(tip && tip.height >= block.header.height){
-            throw new Error(`Block already processed ${block.header.height}, registered tip: ${tip.height}`); 
+            }else if(tip && tip.height >= block.header.height){
+                throw new Error(`Block already processed ${block.header.height}, registered tip: ${tip.height}`); 
 
+            }
+
+            let blockHash = Buffer.from(block.header.hash).toString('hex');
+            await this.registerNewBlock(block);
+            
+            await this.mongo.collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
+            if(!this.syncing )
+                emitter.emit("newCardanoBlock")
+            
+            return true;
+        }catch(e){
+            console.log(e);
         }
-        console.log("New Block", block.header.height);
-
-        let blockHash = Buffer.from(block.header.hash).toString('hex');
-        this.registerNewBlock(block);
-        
-       // await this.mongo.collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
-        if(!this.syncing )
-            emitter.emit("newCardanoBlock")
-        
-        return true;
     }
 
     getCBtcId() : string{
@@ -781,7 +783,9 @@ export class CardanoWatcher{
                     console.log("Burning Transaction", tx);
                     const redemptionTxraw = tx.auxiliary.metadata[0]?.value.metadatum.value as MetadatumArray 
                     const redemptionTx = redemptionTxraw.items.map((item) => item.metadatum.value).join("");
+                    await coordinator.loadBurn(tx, block, redemptionTx);
                     this.mongo.collection("burn").insertOne({tx: tx, txHash: toHexString( tx.hash),block: Buffer.from(block.header.hash).toString("hex"), height: block.header.height, redemptionTx });
+                    
                 }
             }
         }));
