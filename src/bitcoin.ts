@@ -339,7 +339,6 @@ export class BitcoinWatcher{
             if(output.address !== this.getVaultAddress())
             {                   
                 const request = [...requestMap.values()].find((request) => (request.decodedDatum === output.address) && ( coordinator.calculateRedemptionAmount(request) === output.value));
-                console.log("request", request)
                 if(request === undefined) throw new Error('Invalid redemption transaction Output(not found)');    
                 
                 if( output.value !== coordinator.calculateRedemptionAmount(request)) throw new Error('Invalid redemption transaction Output(wrong amount) ');
