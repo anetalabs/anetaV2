@@ -4,7 +4,6 @@ import { ADAWatcher, communicator, coordinator } from './index.js';
 export default class ApiServer {
   private app: express.Express;
   private networkStatus: string = "unknown"
-  private paymentPaths: string = "unknown"
   private utxos: any[] = []
   private requests: any[] = []
   // console.log('Node:', node.id, 
@@ -44,10 +43,14 @@ export default class ApiServer {
     this.app.get('/redemptionReqests', (req, res) => {  
       res.json({ redemptionRequests: ADAWatcher.getRedemptionRequests() });
     });
+
+    this.app.get('/redemptionState',async (req, res) => {
+      res.json({ redemptionState: await coordinator.getCurrentRedemption() });
+    });
     // Add a status endpoint
     this.app.get('/status', (req, res) => {
       
-      res.json({ status: 'OK', networkStatus: this.networkStatus, paymentPaths: coordinator.getPaymentPaths() });
+      res.json({ status: 'OK', networkStatus: this.networkStatus });
     });
 
     this.app.get('/paymentPaths', (req, res) => {
@@ -55,7 +58,8 @@ export default class ApiServer {
     });
 
     this.app.get("/paymentPaths/:index", (req, res) => {
-      res.json({ paymentPaths: this.paymentPaths[req.params.index] });
+      const paymentPaths = coordinator.getPaymentPaths()
+      res.json({ paymentPaths: paymentPaths[Number(req.params.index)] , index : req.params.index });
     });
 
     this.app.get('/utxos', (req, res) => {
