@@ -537,6 +537,7 @@ export class CardanoWatcher{
 
     async queryValidRequests(): Promise< [mintRequest[], redemptionRequest[]]> {
         try{
+            await this.loadUtxos();
             
             const openRequests = [...this.utxos]
 
