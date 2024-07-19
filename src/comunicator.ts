@@ -244,7 +244,7 @@ export class Communicator {
 
     private heartbeat() : void {
         
-
+        this.clearInvalidTransactions();
         if(this.peers[this.Iam].state === NodeStatus.Leader){
             this.broadcast('heartbeat');
             this.gatherSignatures();
@@ -254,6 +254,7 @@ export class Communicator {
                 this.election();
             }
         }
+
         if(  [NodeStatus.Learner, NodeStatus.Monitor, NodeStatus.Candidate].includes(this.peers[this.Iam].state)  && this.countVotes() !== null){
             if(this.getLeader() === this.Iam){
                  this.peers[this.Iam].state = NodeStatus.Leader;
@@ -293,6 +294,12 @@ export class Communicator {
         }
 
         emitter.emit('networkingStatus', {peers: peerStatus, leaderTimeout : new Date(this.leaderTimeout).getTime() - new Date().getTime() });
+    }
+
+
+    private clearInvalidTransactions() {
+        this.transactionsBuffer = this.transactionsBuffer.filter((tx) => ADAWatcher.checkTransaction(tx.tx));
+        this.btcTransactionsBuffer = this.btcTransactionsBuffer.filter((tx) => BTCWatcher.checkTransaction(tx.tx));
     }
 
     private stringToHex(str: string) : string {

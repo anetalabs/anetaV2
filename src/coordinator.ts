@@ -178,14 +178,21 @@ export class Coordinator{
             
             if(redemptions.length !== 0){
 
-                if (currentRedemptionState.state === redemptionState.found && currentRedemptionState.currentTransaction !== newRedemptionState.currentTransaction){
-                    console.log("Found redemption already exists, updating to forged");
-                    await this.redemptionDb.findOneAndUpdate({ index : currentRedemptionState.index, alternative: currentRedemptionState.alternative  }, { $set: newRedemptionState });
-                    return;
+                if (currentRedemptionState.state === redemptionState.found){ 
+                    if (currentRedemptionState.currentTransaction === newRedemptionState.currentTransaction){
+                        console.log("Found redemption already exists, updating to forged");
+                        await this.redemptionDb.findOneAndUpdate({ index : currentRedemptionState.index, alternative: currentRedemptionState.alternative  }, { $set: newRedemptionState });
+                        return;
+                    }else{
+                        if(newRedemptionState.index === currentRedemptionState.index + 1) {
+                            await this.redemptionDb.findOneAndUpdate({ index : newRedemptionState.index, alternative: newRedemptionState.alternative  }, { $set: newRedemptionState }, { upsert: true });
+                            communicator.leaderBroadcast("updateRequest", currentRedemptionState.currentTransaction);
+                        }
+                    }
                 }
                 
                 if(newRedemptionState.index === currentRedemptionState.index + 1) {
-                    if(! redemptions.some(redemption => redemption.state === redemptionState.finalized)  ) throw new Error("Redemption already in progress");
+                    if(! redemptions.some(redemption => (redemption.state === redemptionState.finalized))  ) throw new Error("Redemption already in progress");
                 }else if(newRedemptionState.index === currentRedemptionState.index && newRedemptionState.alternative !== currentRedemptionState.alternative +1 ) {
                     if(currentRedemptionState.state === redemptionState.forged){
                         if ( communicator.checkAdaQuorum(ADAWatcher.getTxSigners(currentRedemptionState.burningTransaction.tx) )){

@@ -13,6 +13,7 @@ export const METADATA_TAG = 85471236584;
 
 export class CardanoWatcher{
     private mongo: Db;
+    private utxos : Lucid.UTxO[] = [];
     private lucid: Lucid.Lucid;
     private mintingScript: Lucid.Script;
     private syncing: boolean = true;
@@ -529,9 +530,15 @@ export class CardanoWatcher{
         });
     
     }
+
+    async loadUtxos(){
+        this.utxos = ((await this.lucid.provider.getUtxos(this.address)).filter((request) => request.datum));
+    }
+
     async queryValidRequests(): Promise< [mintRequest[], redemptionRequest[]]> {
         try{
-            const openRequests = ((await this.lucid.provider.getUtxos(this.address)).filter((request) => request.datum));
+            
+            const openRequests = [...this.utxos]
 
             this.removeConsumedRequests(openRequests);
 
@@ -681,6 +688,20 @@ export class CardanoWatcher{
         if(!tx) return false;
         const confirmations = tip.data.height - tx.height;
         return  confirmations>=  coordinator.config.finality.cardano;
+    }
+
+    checkTransaction(txString : Lucid.TxComplete){
+        const [txBody, cTx] = this.decodeTransaction(txString);
+        txBody.inputs.forEach((input) => {
+            if(input.address === this.address ){
+                if(!this.utxos.some((utxo) => utxo.txHash === input.transaction_id && utxo.outputIndex === input.index)){
+                        return false;
+                }
+            }
+        });
+        return true;
+        
+
     }
 
     async isBurnConfirmed(txId : string){

@@ -356,6 +356,16 @@ export class BitcoinWatcher{
         return true;
     }
 
+    checkTransaction(tx: bitcoin.Psbt){
+        const txb = tx;
+        const utxos = this.utxos[this.utxos.length - 1].utxos;
+        txb.txInputs.forEach((input) => {
+            const utxo = utxos.find((utxo) => utxo.txid === Buffer.from(input.hash).toString("hex") && utxo.vout === input.index);
+            if (utxo === undefined) return false
+        });
+        return true;
+
+    }
 
     completeRedemption = async (txHex: string) => {
         const txb = bitcoin.Psbt.fromHex(txHex, {network : bitcoin.networks[this.config.network] });
