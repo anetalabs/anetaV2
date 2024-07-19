@@ -506,7 +506,7 @@ export class Coordinator{
             }
 
 
-            if(path.state === state.finished && payment.length  === 0){
+            if(path.state >= state.completed && payment.length  === 0){
                 path = {state: state.open, index: index , address: BTCWatcher.getAddress(index)};
                 this.paymentPaths[index] = path;
                 this.paymentPathsDb.deleteOne({ index });
