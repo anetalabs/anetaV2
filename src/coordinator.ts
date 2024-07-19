@@ -168,7 +168,6 @@ export class Coordinator{
         }
     }
 
-
     async importRedemption(newRedemptionState: redemptionController){
         try{
             const redemptions = await this.getCurrentRedemption();
@@ -416,6 +415,8 @@ export class Coordinator{
                 }
             }
             await this.redemptionDb.findOneAndUpdate({ index , alternative}, {$set: redemption}, {upsert: true});
+            await this.redemptionDb.updateOne({  state : redemptionState.completed }, { $set: { state: redemptionState.found } });
+            await this.redemptionDb.updateOne({  state : redemptionState.burned }, { $set: { state: redemptionState.found } });
         }
 
     }

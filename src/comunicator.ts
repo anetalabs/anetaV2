@@ -261,6 +261,7 @@ export class Communicator {
                  this.peers[this.Iam].state = NodeStatus.Follower;
                  this.broadcast('statusUpdate', NodeStatus.Follower);
             }
+            this.queryMissingData();
         }
         
         this.peers.forEach((node, index) => {

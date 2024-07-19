@@ -256,7 +256,6 @@ export class BitcoinWatcher{
         let totalOutputValue = 0;
     
         // I want to check that the burn is confirmed, that the metadata is correct 
-        console.log(cTx.auxiliary_data().metadata().to_js_value()[String(METADATA_TAG)]["list"])
         if(txc.toHash() !== redemption.burningTransaction.txId) throw new Error('Invalid burn transaction hash');
         
         const burnConfirmed = await ADAWatcher.isBurnConfirmed(redemption.burningTransaction.txId);
@@ -310,8 +309,6 @@ export class BitcoinWatcher{
         if(txDetails.outputs.length !== 1 || txDetails.outputs[0].address !== coordinator.config.adminAddress || txDetails.outputs[0].amount.multiasset !== null ) 
             throw new Error('Invalid burn transaction Output');
         
-        if(txDetails.inputs.length !== redemptionRequests.length) 
-            throw new Error('Invalid burn transaction Input');
         
         let totalBurn = 0;
         redemptionRequests.forEach((request) => {
@@ -323,6 +320,11 @@ export class BitcoinWatcher{
                 requestMap.set(key, request);
             }
         });
+
+        if(txDetails.inputs.length !== requestMap.size) 
+            throw new Error('Invalid burn transaction Input');
+        
+
         console.log(Object.keys(txDetails.mint).length,Object.keys(txDetails.mint[ADAWatcher.getCBtcPolicy()]).length,txDetails.mint[ADAWatcher.getCBtcPolicy()][ADAWatcher.getCBtcHex()], -totalBurn )
         
         if(Object.keys(txDetails.mint).length !== 1 || Object.keys(txDetails.mint[ADAWatcher.getCBtcPolicy()]).length !== 1 || Number(txDetails.mint[ADAWatcher.getCBtcPolicy()][ADAWatcher.getCBtcHex()]) !== -totalBurn)

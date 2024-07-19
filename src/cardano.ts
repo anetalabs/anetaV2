@@ -75,8 +75,8 @@ export class CardanoWatcher{
         //this.lucid.provider.submitTx(tx.toString());
         console.log("Submitting: ", tx.toString());
         try{
-            await this.lucid.provider.submitTx(tx.toString());
-          //  await axios.post("https://cardano-preview.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toString(), 'hex'), {headers: {"project_id": "preview8RNLE7oZnZMFkv5YvnIZfwURkc1tHinO", "Content-Type": "application/cbor"}})   
+           // await this.lucid.provider.submitTx(tx.toString());
+            await axios.post("https://cardano-preprod.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toString(), 'hex'), {headers: {"project_id": this.config.lucid.provider.projectId, "Content-Type": "application/cbor"}})   
         }catch(e){
             console.log(e);
             emitter.emit("submitionError", e);
@@ -639,9 +639,13 @@ export class CardanoWatcher{
 
     async paymentProcessed(txid: string, vout: number): Promise<Boolean>{
         //find the payment in the list of mints in MongoDB, payments is a array of txId , check if the payment is in the list
-       const match = await this.mongo.collection("mint").find({payments:  { $in : [txId(txid, vout)]}}).toArray();
-
-       return match.length > 0;
+       const match  = await this.mongo.collection("mint").findOne({payments:  { $in : [txId(txid, vout)]}});
+       if(match === null){
+              return false;
+        }
+       const tip = await this.getTip();
+       const confirmations = tip.data.height - match.height;
+       return  confirmations>=  coordinator.config.finality.cardano;
     }
 
     
@@ -669,7 +673,7 @@ export class CardanoWatcher{
         return new Lucid.TxComplete(this.lucid,Ctx);
     }
 
-    async confirmRedemption(redemptionTx){
+    async confirmRedemption(redemptionTx : string){
 
         console.log("Checking Burn redemption", redemptionTx);
         const tx = await this.mongo.collection("burn").findOne({ redemptionTx: redemptionTx});
