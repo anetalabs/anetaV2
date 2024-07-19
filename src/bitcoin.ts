@@ -4,7 +4,7 @@ import {ECPairFactory}  from 'ecpair'
 import { TxComplete , C} from 'lucid-cardano'
 import * as ecc  from 'tiny-secp256k1'
 import { EventEmitter } from 'events';
-import {bitcoinConfig, topology, secretsConfig,  redemptionRequest, redemptionState,redemptionController} from "./types.js"
+import {bitcoinConfig, topology, secretsConfig,  redemptionRequest, protocolConfig ,redemptionController} from "./types.js"
 import * as bip39 from 'bip39';
 import {BIP32Factory , BIP32Interface} from 'bip32';
 import { emitter } from "./coordinator.js";
@@ -33,13 +33,15 @@ export class BitcoinWatcher{
     private gettingUtxos: boolean = false;
     private root: BIP32Interface ;
     private consolidationQue: number[] = []; 
+    private protocol: protocolConfig;
 
-    constructor(config : bitcoinConfig, topology : topology, secrets : secretsConfig){
+    constructor(config : bitcoinConfig, topology : topology, secrets : secretsConfig, protocol : protocolConfig){
         console.log("bitcoin watcher")
         this.config = config
         this.topology = topology
+        this.protocol = protocol
         this.client = new BitcoinCore(config.bitcoinRPC);
-        this.address =  Array.from({length: config.paymentPaths}, (_, index) => index).map((index) => this.getAddress(index))
+        this.address =  Array.from({length: protocol.paymentPaths}, (_, index) => index).map((index) => this.getAddress(index))
         console.log("paymentA Address:", this.address)
         console.log("Vault Address:", this.getVaultAddress())
         this.watcherSync()
@@ -689,7 +691,7 @@ export class BitcoinWatcher{
     }
     
     getAddress(index: number){
-        if(index < 0 || index >= this.config.paymentPaths) throw new Error('Index out of range');
+        if(index < 0 || index >= this.protocol.paymentPaths) throw new Error('Index out of range');
         const HexKeys =  this.topology.topology.map((guardian , guardianIndex) => {
             const bip32 = BIP32Factory(ecc);
             const parent = bip32.fromBase58(guardian.btcKey);
@@ -743,7 +745,7 @@ export class BitcoinWatcher{
     
 
     getPaymentPaths(){
-        return this.config.paymentPaths;
+        return this.protocol.paymentPaths;
     }
 
 

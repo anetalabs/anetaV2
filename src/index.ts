@@ -38,7 +38,7 @@ async function main() {
     
     communicator = new Communicator(topology, secrets, args.port || 3000)
     notification = new NotificationManager(notificationConfig)
-    BTCWatcher = new BitcoinWatcher(bitcoinConfig, topology, secrets);
+    BTCWatcher = new BitcoinWatcher(bitcoinConfig, topology, secrets, protocolConfig);
     ADAWatcher = new CardanoWatcher(cardanoConfig,  secrets, protocolConfig);
     coordinator = new Coordinator( protocolConfig);
 
