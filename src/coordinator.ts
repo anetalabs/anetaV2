@@ -8,8 +8,6 @@ import {Psbt} from "bitcoinjs-lib";
 import { getDb } from "./db.js";
 import { Collection } from "mongodb";
 import { CardanoBlock } from "@utxorpc/sdk";
-import { number } from "bitcoinjs-lib/src/script.js";
-import { BitcoinWatcher } from "./bitcoin.js";
 
 enum state {
     open,

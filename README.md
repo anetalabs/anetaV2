@@ -9,6 +9,8 @@ The AnetaBTC V2 protocol is a destributed protocol that allows users to securely
 
 For an overview of the protocol, please refer to the TODO.
 
+For a list of the API endpoints, please refer to the [API](Docs/api.md) documentation.
+
 For instructions on how to use the manual scripts, please refer to the [scripts](Docs/scripts.md) documentation.
 
 
