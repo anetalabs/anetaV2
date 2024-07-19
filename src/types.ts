@@ -15,8 +15,7 @@ export  type bitcoinConfig =
     "falbackFeeRate" : number,
     "BTCadminAddress": string,
     "BTCPrivKey": string,
-    "network": string,
-    "paymentPaths" : number
+    "network": string
 }
 
 export type topology = {
@@ -79,6 +78,7 @@ export type protocolConfig = {
     }
     contract: string
     adminToken: string
+    paymentPaths : number
 
 }
 

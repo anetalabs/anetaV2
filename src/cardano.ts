@@ -534,7 +534,7 @@ export class CardanoWatcher{
     async loadUtxos(){
         this.utxos = ((await this.lucid.provider.getUtxos(this.address)).filter((request) => request.datum));
     }
-
+    
     async queryValidRequests(): Promise< [mintRequest[], redemptionRequest[]]> {
         try{
             await this.loadUtxos();

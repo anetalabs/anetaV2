@@ -40,12 +40,13 @@ export class Coordinator{
         this.config  = protocol
         this.redemptionDb = getDb(ADAWatcher.getDbName()).collection("redemptionState");
         this.paymentPathsDb = getDb(ADAWatcher.getDbName()).collection("paymentPaths");
+
         (async () => {
            
             this.paymentPaths = await Promise.all(
                 Array.from({length: BTCWatcher.getPaymentPaths()}, (_, index) => index).map(async (index) => {
                     const paymentPath = await this.paymentPathsDb.findOne({index});
-                    return paymentPath || {state: state.open, index, address: BTCWatcher.getAddress(index)};
+                    return paymentPath === null ? {state: state.open, index, address: BTCWatcher.getAddress(index)} : paymentPath; 
                 })
         );
 
