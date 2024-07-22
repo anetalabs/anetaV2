@@ -573,6 +573,12 @@ export class CardanoWatcher{
                             this.rejectRequest(request.txHash, request.outputIndex);
                             return;
                         }
+                        
+                        if(!BTCWatcher.isAddressValid(decodedRequest.decodedDatum))
+                        {
+                            this.rejectRequest(request.txHash, request.outputIndex);
+                            return;
+                        }
                         return decodedRequest;
                     
                     }catch(e){

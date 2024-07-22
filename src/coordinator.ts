@@ -236,13 +236,12 @@ export class Coordinator{
             let alternative = 0;
             if(currentRedemptions.length !== 0){
                 index = currentRedemptions[0].index;
-                alternative = currentRedemptions[0].alternative ;
                 if(currentRedemptions[0].state === redemptionState.forged){ 
                     if ( communicator.checkAdaQuorum(ADAWatcher.getTxSigners(currentRedemptions[0].burningTransaction.tx) )){
                         throw new Error("Redemption already forged, waiting for burn signatures");
                     }else{
                             console.log("Quorum not met, recreating redemption transaction");
-                            alternative += 1;
+                            alternative = 1 +  currentRedemptions[0].alternative;
                     }
                 }else if(currentRedemptions[0].state === redemptionState.found){
                     if(currentRedemptions[0].currentTransaction === currentTransaction.toHex()) {

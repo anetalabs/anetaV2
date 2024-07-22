@@ -670,6 +670,16 @@ export class BitcoinWatcher{
     }
     }
 
+    isAddressValid(Address : string){
+        try{
+            bitcoin.address.toOutputScript(Address, bitcoin.networks[this.config.network]);
+            return true;
+        } catch (e) {
+            return false;
+        }
+
+    }
+
     getVaultAddress(){
         const HexKeys =  this.topology.topology.map((guardian , guardianIndex) => {
             const bip32 = BIP32Factory(ecc);
