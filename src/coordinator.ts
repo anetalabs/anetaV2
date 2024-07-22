@@ -163,10 +163,18 @@ export class Coordinator{
             if(redemption === null) throw new Error("Redemption not found");
             if(redemption.state !== redemptionState.found) throw new Error("Redemption not in found state");
             if(data.state !== redemptionState.finalized) throw new Error("Redemption not in finalized state");
+            if(data.burningTransaction.txId !== redemption.burningTransaction.txId) throw new Error("Burn transaction does not match");   
+            if(data.currentTransaction !== redemption.currentTransaction) throw new Error("Redemption transaction does not match");
+
             const redemptionOk = BTCWatcher.checkFinalizedRedemptionTx(data);
             if (!redemptionOk) throw new Error("Redemption transaction is not valid");
+
+
             const cleanData = data
             delete cleanData["_id"];
+            delete cleanData["index"];
+            delete cleanData["alternative"];
+            
             await this.redemptionDb.findOneAndUpdate({ currentTransaction : data.currentTransaction , state : redemptionState.found }, { $set: data });
        
         }catch(e){
@@ -347,7 +355,7 @@ export class Coordinator{
             redemption.redemptionTxId = psbt.extractTransaction().getId();
             redemption.redemptionTx = psbt.toHex();
             redemption.state = redemptionState.completed;
-            this.redemptionDb.findOneAndUpdate({ index : redemption.index }, {$set: redemption}, {upsert: true});
+            this.redemptionDb.findOneAndUpdate({ index : redemption.index , alternative : redemption.alternative }, {$set: redemption});
 
             this.checkRedemption();
         }

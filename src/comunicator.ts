@@ -198,7 +198,7 @@ export class Communicator {
 
     getQuorum() : string[]{
      // get the n nodes with the oldest connection time
-     //return  ["26c38175d0b2d9571e1aabb1254c71ceb73516f28ec1d926d75b0ed0","ad3adb29e8e3cecedb44e9dda86f3ec1cb6b055b8791352468d6bc70"].map((pkHash) => this.lucid.utils.credentialToAddress({type: "Key", hash: pkHash})) 
+    // / return  ["78e88e01d77184e41ba7ceb36af9fb6844640ba9ea968a1aa97c8d6e","a85265597b7023b0c56f550a688c16a1408d21d8154ae50ec94bd734"].map((pkHash) => this.lucid.utils.credentialToAddress({type: "Key", hash: pkHash})) 
         const quorum = this.peers
             .filter((node) => node.state === NodeStatus.Follower)
             .sort((a, b) => a.connectionTime.getTime() - b.connectionTime.getTime())

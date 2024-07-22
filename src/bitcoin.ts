@@ -247,43 +247,38 @@ export class BitcoinWatcher{
     }
 
     async checkFinalizedRedemptionTx (redemption : redemptionController): Promise <boolean> {
-        console.log("checking redemption transaction")
+        try{
+            console.log("checking redemption transaction")
 
-       // const txb = bitcoin.Psbt.fromHex(redemption.redemptionTx, {network : bitcoin.networks[this.config.network] });
-        const txc = ADAWatcher.txCompleteFromString(redemption.burningTransaction.tx);
-        const [txDetails, cTx] = ADAWatcher.decodeTransaction(txc);
-           // check than no 2 requests are the same by txHash and outputIndex
-        const requestMap = new Map<string, redemptionRequest>();
-        let totalInputValue = 0;
-        let totalOutputValue = 0;
-    
-        // I want to check that the burn is confirmed, that the metadata is correct 
-        if(txc.toHash() !== redemption.burningTransaction.txId) throw new Error('Invalid burn transaction hash');
-        
-        const burnConfirmed = await ADAWatcher.isBurnConfirmed(redemption.burningTransaction.txId);
-        if(!burnConfirmed) throw new Error('Burn transaction not confirmed');
-
-
-        if(txDetails.outputs.length !== 1 || txDetails.outputs[0].address !== coordinator.config.adminAddress || txDetails.outputs[0].amount.multiasset !== null ) 
-            throw new Error('Invalid burn transaction Output');
+            const txc = ADAWatcher.txCompleteFromString(redemption.burningTransaction.tx);
+            const [txDetails, cTx] = ADAWatcher.decodeTransaction(txc);
+            const medatadata = JSON.parse(cTx.auxiliary_data().metadata().to_js_value()[String(METADATA_TAG)]);
+            const txString = medatadata.list.map((substring) =>  substring.string ).join("") 
+            if(txString !== redemption.currentTransaction) throw new Error('Invalid burn transaction hash');
         
 
+            if(this.txEqual(redemption.currentTransaction, redemption.redemptionTx) === false) throw new Error('Invalid redemption transaction');
+            if(this.txEqual(redemption.burningTransaction.tx, redemption.currentTransaction) === false) throw new Error('Invalid burn transaction');
+            const txb = bitcoin.Psbt.fromHex(redemption.currentTransaction, {network : bitcoin.networks[this.config.network] });
 
-        // console.log(Object.keys(txDetails.mint).length,Object.keys(txDetails.mint[ADAWatcher.getCBtcPolicy()]).length,txDetails.mint[ADAWatcher.getCBtcPolicy()][ADAWatcher.getCBtcHex()], -totalBurn )
-        
-        // if(Object.keys(txDetails.mint).length !== 1 || Object.keys(txDetails.mint[ADAWatcher.getCBtcPolicy()]).length !== 1 || Number(txDetails.mint[ADAWatcher.getCBtcPolicy()][ADAWatcher.getCBtcHex()]) !== -totalBurn)
-        //         throw new Error('Invalid burn transaction mint');
+            if(txb.extractTransaction().getId() !== redemption.redemptionTxId) throw new Error('Invalid redemption transaction hash');
+            // I want to check that the burn is confirmed, that the metadata is correct 
+            if(txc.toHash() !== redemption.burningTransaction.txId) throw new Error('Invalid burn transaction hash');
             
-        //     console.log("redemptionRequests", redemptionRequests)
-        //     const ValidRedemptionScript = this.getVaultRedeemScript()
-        //     txb.data.inputs.forEach((input) => {
-        //         if(input.witnessScript.toString('hex') !== ValidRedemptionScript) throw new Error('Invalid redemption transaction Input');
-        // });
+            const burnConfirmed = await ADAWatcher.isBurnConfirmed(redemption.burningTransaction.txId);
+            if(!burnConfirmed) throw new Error('Burn transaction not confirmed');
 
+
+            if(txDetails.outputs.length !== 1 || txDetails.outputs[0].address !== coordinator.config.adminAddress || txDetails.outputs[0].amount.multiasset !== null ) 
+                throw new Error('Invalid burn transaction Output');
         
-      
-        return true;
-    
+        
+            return true;
+        } catch (e) {
+            console.log(e)
+            return false;
+        }
+        
     
     }
         
@@ -302,6 +297,8 @@ export class BitcoinWatcher{
         let totalInputValue = 0;
         let totalOutputValue = 0;
         if(txString !== tx) throw new Error('Invalid burn transaction hash');
+
+        
         redemptionRequests = redemptionRequests.filter((request) => txDetails.inputs.find((input) => input.transaction_id === request.txHash && Number(input.index) === request.outputIndex) !== undefined);
         
         const burenedRequests = txDetails.inputs.map((input) => {
