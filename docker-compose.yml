@@ -6,7 +6,7 @@ services:
       context: BtcCore
       dockerfile: dockerfile
     volumes:
-      - ../volume/data/bitcoin:/data
+      - ../data/bitcoin:/data
   guardian-angel:
     build:
       dockerfile: dockerfile
@@ -24,9 +24,9 @@ services:
   dolos:
     image: ghcr.io/txpipe/dolos:latest
     volumes:
-      -  ./dolos/preview/preview.toml:/etc/dolos/daemon.toml
+      -  ./config/dolos.toml:/etc/dolos/daemon.toml
       -  ./dolos/preview/genesis:/etc/dolos/genesis 
-      - ../dolos/data:/data
+      - ../data/dolos:/data
     entrypoint: sh -c " dolos daemon "  
     healthcheck:
       test: ["CMD-SHELL", "curl --fail http://localhost:50051 || exit 1"]
@@ -40,4 +40,4 @@ services:
     ports:
       -  "127.0.0.1:27017:27017"
     volumes:
-      - ./data/mongo:/data/db
+      - ../data/mongo:/data/db
