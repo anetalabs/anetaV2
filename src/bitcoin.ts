@@ -7,7 +7,6 @@ import { EventEmitter } from 'events';
 import {bitcoinConfig, topology, secretsConfig,  redemptionRequest, protocolConfig ,redemptionController} from "./types.js"
 import * as bip39 from 'bip39';
 import {BIP32Factory , BIP32Interface} from 'bip32';
-import { emitter } from "./coordinator.js";
 import { utxo } from "./types.js";
 import  {METADATA_TAG} from "./cardano.js";
 import { ADAWatcher, communicator, coordinator } from "./index.js";
@@ -70,8 +69,7 @@ export class BitcoinWatcher{
                 console.log("new BTC block: ",currentHeight);
                 lastHeight = currentHeight;
                 await this.getUtxos()
-                emitter.emit("newBtcBlock");
-                
+                coordinator.onNewBtcBlock();                
             }
         }, 15000); // Check every 5 seconds
     }
@@ -100,8 +98,14 @@ export class BitcoinWatcher{
         await this.getUtxos();
         
         this.isSynced = true;
+        coordinator.onNewBtcBlock();
         this.startListener()
     };
+
+    getLoadedUtxos = () => {    
+        return this.utxos;
+    }
+
     getVaultUtxos = () => {
         return this.utxos[this.address.length].utxos;
     }
@@ -659,10 +663,7 @@ export class BitcoinWatcher{
             address: this.getVaultAddress(),
             utxos: utxosByAddress[this.getVaultAddress()] || []
         });
-        this.utxos.map((address) => console.log(address.utxos))
         console.log("Vault", this.utxos[this.address.length])
-        emitter.emit("newBtcBlock");
-        emitter.emit("newUtxos", this.utxos);
         this.gettingUtxos = false;
     } catch (e) {
         console.log(e)

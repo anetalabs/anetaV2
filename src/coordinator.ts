@@ -2,7 +2,6 @@ import { BTCWatcher  , ADAWatcher, communicator, coordinator } from "./index.js"
 import EventEmitter from "events";
 import { requestId } from "./helpers.js";
 import { Tx } from   "@utxorpc/spec/lib/utxorpc/v1alpha/cardano/cardano_pb.js";
-export const emitter = new EventEmitter();
 import { redemptionRequest, mintRequest,  utxo , protocolConfig, MintRequestSchema, redemptionController, redemptionState} from "./types.js";
 import {Psbt} from "bitcoinjs-lib";
 import { getDb } from "./db.js";
@@ -52,8 +51,6 @@ export class Coordinator{
         this.getOpenRequests = this.getOpenRequests.bind(this);
         this.onNewCardanoBlock = this.onNewCardanoBlock.bind(this); 
        
-        emitter.on("newCardanoBlock", this.onNewCardanoBlock);
-        emitter.on("newBtcBlock", this.onNewBtcBlock.bind(this));
 
     }
 

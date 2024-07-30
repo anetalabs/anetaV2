@@ -1,5 +1,4 @@
 import { ADAWatcher, BTCWatcher, coordinator } from './index.js';
-import { emitter } from './coordinator.js';
 import { topology, secretsConfig, pendingCardanoTransaction, pendingBitcoinTransaction, NodeStatus, redemptionController , redemptionState } from './types.js';
 import { Server, Socket as ServerSocket } from 'socket.io';
 import { Socket as ClientSocket } from 'socket.io-client';
@@ -41,6 +40,7 @@ export class Communicator {
     private transactionsBuffer: pendingCardanoTransaction[] = [];
     private btcTransactionsBuffer: pendingBitcoinTransaction[] = [];
     private Iam: number;
+    private networkStatus : {peers: any, leaderTimeout: number};
     constructor(topology: topology, secrets: secretsConfig , port: number) {
         this.heartbeat = this.heartbeat.bind(this);
 
@@ -292,10 +292,12 @@ export class Communicator {
             this.peers[this.Iam].state = NodeStatus.Follower;
             this.broadcast('statusUpdate', NodeStatus.Follower);
         }
-
-        emitter.emit('networkingStatus', {peers: peerStatus, leaderTimeout : new Date(this.leaderTimeout).getTime() - new Date().getTime() });
+        this.networkStatus = {peers: peerStatus, leaderTimeout : new Date(this.leaderTimeout).getTime() - new Date().getTime() };
     }
 
+    public getNetworkStatus(){
+        return this.networkStatus;
+    }
 
     private clearInvalidTransactions() {
         this.transactionsBuffer = this.transactionsBuffer.filter((tx) => ADAWatcher.checkTransaction(tx.tx));

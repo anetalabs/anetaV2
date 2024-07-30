@@ -1,10 +1,9 @@
 import { Db } from "mongodb";
 import { toHexString, txId,  hexToString } from "./helpers.js";
 import * as Lucid  from 'lucid-cardano'
-import { CardanoSyncClient , CardanoBlock } from "@utxorpc/sdk";
+import { CardanoSyncClient , CardanoBlock , CardanoQueryClient} from "@utxorpc/sdk";
 import {MetadatumArray} from  "@utxorpc/spec/lib/utxorpc/v1alpha/cardano/cardano_pb.js";
 import {cardanoConfig, secretsConfig, mintRequest , MintRequestSchema, RedemptionRequestSchema, utxo, redemptionRequest, protocolConfig} from "./types.js"
-import {emitter}  from "./coordinator.js";
 import axios from "axios";
 import { getDb } from "./db.js";
 import {  BTCWatcher, communicator, coordinator } from "./index.js";
@@ -44,7 +43,6 @@ export class CardanoWatcher{
            this.lucid = await Lucid.Lucid.new(new Lucid.Blockfrost(config.lucid.provider.host, config.lucid.provider.projectId), (config.network.charAt(0).toUpperCase() + config.network.slice(1)) as Lucid.Network);
            this.lucid.selectWalletFromSeed(secrets.seed);
            console.log("Minting Script Address:", this.mintingScript);
-           emitter.emit("notification", "Cardano Watcher Ready");
            this.cBTCPolicy = this.lucid.utils.mintingPolicyToId(this.mintingScript);
            console.log("Minting PolicyId:", this.cBTCPolicy);
            this.cBtcHex = "63425443";
@@ -80,7 +78,6 @@ export class CardanoWatcher{
             await axios.post("https://cardano-preprod.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toString(), 'hex'), {headers: {"project_id": this.config.lucid.provider.projectId, "Content-Type": "application/cbor"}})   
         }catch(e){
             console.log(e);
-            emitter.emit("submitionError", e);
         }
     }
 
@@ -543,7 +540,6 @@ export class CardanoWatcher{
 
             this.removeConsumedRequests(openRequests);
 
-            emitter.emit("requestsUpdate", openRequests);
             
             const mintRequests = openRequests.map((request) => {
                 const isMint = Object.keys(request.assets).length === 1;
@@ -756,8 +752,7 @@ export class CardanoWatcher{
             
             await this.mongo.collection("height").updateOne({type: "top"}, {$set: {hash: blockHash, slot: block.header.slot, height: block.header.height}}, {upsert: true});
             if(!this.syncing )
-                emitter.emit("newCardanoBlock")
-            
+                coordinator.onNewCardanoBlock()            
             return true;
         }catch(e){
             console.log(e);
