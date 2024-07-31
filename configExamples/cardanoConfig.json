@@ -1,7 +1,6 @@
 {
         "DbName" : "cNeta",
         "network": "preview",
-        "paymentAddress" : "addr_test1qqjg030vffsy7jav0802dr5unfv06dn5avtqh7028ykrd2l3meyrd8efkt952egccka06epqkye4j9fnrarjjjhrxz2sufjewr",
         "mongo": {
             "connectionString": "mongodb://127.0.0.1:27017"
         },
@@ -10,7 +9,7 @@
                 "type": "blockfrost",
                 "host": "https://cardano-preview.blockfrost.io/api/v0"
             }
-        },
+        }, 
         "utxoRpc": {
             "host": "https://preview.utxorpc-v0.demeter.run",
             "headers":  {"dmtr-api-key": "dmtr_utxorpc14cjctqdg5lhr8gpegjggh4x45grk4cwq"} 

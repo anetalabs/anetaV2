@@ -79,13 +79,11 @@ export type protocolConfig = {
     contract: string
     adminToken: string
     paymentPaths : number
-
 }
 
 export type cardanoConfig = {
     DbName : string,
     network: string
-    paymentAddress: string
     mongo: {
       connectionString: string
     }

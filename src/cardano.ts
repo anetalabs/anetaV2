@@ -495,7 +495,7 @@ export class CardanoWatcher{
             console.log(chunk.nextToken)
             tipPoint = chunk.nextToken;
             //sort the blocks by slot
-            chunk.block.sort((a , b) =>  Number(a.chain.value.header.slot - b.chain.value.header.slot));
+            chunk.block.sort((a , b) =>  Number(a.chain.value.header.height - b.chain.value.header.height));
             for (const block of chunk.block) {
                 //console.log("Block:",  block);
                 this.handleNewBlock(block.chain.value as CardanoBlock);
