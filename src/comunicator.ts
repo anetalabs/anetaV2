@@ -77,8 +77,6 @@ export class Communicator {
                 console.error('Error starting lucid:', err);
             }
         })();
-
-        
         
         function initializeNodes(topology: topology, lucid: Lucid.Lucid, Iam: number ) {
             return topology.topology.map((node, index) => {
@@ -196,6 +194,7 @@ export class Communicator {
       
     }
 
+   
     getQuorum() : string[]{
      // get the n nodes with the oldest connection time
     // / return  ["78e88e01d77184e41ba7ceb36af9fb6844640ba9ea968a1aa97c8d6e","a85265597b7023b0c56f550a688c16a1408d21d8154ae50ec94bd734"].map((pkHash) => this.lucid.utils.credentialToAddress({type: "Key", hash: pkHash})) 
@@ -383,7 +382,7 @@ export class Communicator {
         return leader;
     }
 
-    private  applyRuntimeListeners(socket: ServerSocket, index: number) {
+    private applyRuntimeListeners(socket: ServerSocket, index: number) {
         
         // socket.removeAllListeners();
         socket.on('heartbeat', () => {  

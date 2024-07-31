@@ -21,8 +21,19 @@ export default class ApiServer {
       }
     });
     this.app.get('/',async (req, res) => {
-      res.json(await ADAWatcher.getAddress())
+      const address = await ADAWatcher.getAddress();
+      const BTCpubKey = await BTCWatcher.getMyPublicKey();
+      const ADApubKey = await ADAWatcher.getMyKeyHash();
+      res.json({
+        address: address,
+        BTCpubKey: BTCpubKey,
+        ADApubKey: ADApubKey
+      });
+      })
 
+
+    this.app.get('/quorum', (req, res) => { 
+      res.json({ quorum: communicator.getQuorum() });
     });
 
     this.app.get('/redemptionReqests', (req, res) => {  

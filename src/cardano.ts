@@ -76,7 +76,7 @@ export class CardanoWatcher{
         console.log("Submitting: ", tx.toString());
         try{
            // await this.lucid.provider.submitTx(tx.toString());
-            await axios.post("https://cardano-preprod.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toString(), 'hex'), {headers: {"project_id": this.config.lucid.provider.projectId, "Content-Type": "application/cbor"}})   
+            await axios.post( this.config.lucid.provider.host +"/tx/submit", Buffer.from(tx.toString(), 'hex'), {headers: {"project_id": this.config.lucid.provider.projectId, "Content-Type": "application/cbor"}})   
         }catch(e){
             console.log(e);
         }
@@ -458,6 +458,10 @@ export class CardanoWatcher{
         }}else{
             this.mintQueue.push({txHash, index , targetAddress: await this.getUtxoSender(txHash, index), completed : undefined, created: new Date()} );                
         }
+    }
+
+    getMyKeyHash(): [string, string]{
+        return [ this.lucid.utils.credentialToAddress({type: "Key", hash: this.myKeyHash}), this.myKeyHash];
     }
 
     async getTip(){

@@ -102,6 +102,13 @@ export class BitcoinWatcher{
         this.startListener()
     };
 
+    getMyPublicKey = () => {
+        const path = "m/44'/0'/0'"; 
+        const node = this.root.derivePath(path);
+        const BtcPublicKey = node.neutered().toBase58()
+        return BtcPublicKey
+    }
+
     getLoadedUtxos = () => {    
         return this.utxos;
     }
