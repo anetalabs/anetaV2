@@ -473,9 +473,17 @@ export class CardanoWatcher{
     inSync(){
         return !this.syncing;
     }
+    
 
 
     async dumpHistory(){
+        const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
+            const timeout = new Promise<null>((_, reject) =>
+                setTimeout(() => reject(new Error('Timeout reached')), ms)
+            );
+            return Promise.race([promise, timeout]);
+        };
+        
     try{
         const chunkSize = 100; 
         let tip = await this.mongo.collection("height").findOne({type: "top"});
@@ -489,7 +497,8 @@ export class CardanoWatcher{
         console.log("Starting sync from tip", tipPoint);
         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers : this.config.utxoRpc.headers} );
         let chunk : DumpHistoryResponse | null
-        chunk =  await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize})
+        const FIVE_MIN = 1 * 60 * 1000
+        chunk =  await withTimeout(rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize}),FIVE_MIN)
         console.log("Chunk", chunk);    
         
         while(chunk && chunk.nextToken && chunk.block.length === 100){
@@ -505,19 +514,22 @@ export class CardanoWatcher{
             };
             console.timeEnd("Chunk")
             //set tip to the last block
-            const FIVE_MIN =5 * 60 * 1000
             console.time("NextChunkFetch")
-            chunk =await Promise.race([
-                rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize})    ,
-                new Promise<null>((resolve) => setTimeout(() => resolve(null), FIVE_MIN))
-            ]);
+            chunk = await withTimeout(rcpClient.inner.dumpHistory({ startToken: tipPoint, maxItems: chunkSize }), FIVE_MIN);
+                   
             console.timeEnd("NextChunkFetch")
         }
 
         console.log("Done Dumping History");
     }catch(e){
-        console.log(e);
-       await this.dumpHistory();
+        if (e.message === 'Timeout reached') {
+            console.log('Timeout reached');
+            console.log("Done Dumping History");
+            return;
+        } else {
+            console.log(e);
+            await this.dumpHistory();
+        }
     }
         //exit the process
     console.log("Done Dumping History");
@@ -607,14 +619,11 @@ export class CardanoWatcher{
         let liveTip = await this.getTip();  
         console.log(liveTip.data)
 
-        
         console.log("tip" , tip);
         let tipPoint = undefined ;   
         if(tip){
             tipPoint = [{slot: tip.slot, hash: new Uint8Array(Buffer.from(tip.hash, "hex"))}];
         }
-
-
 
         console.log("Starting indexer from tip", tipPoint);
         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers : this.config.utxoRpc.headers} );
