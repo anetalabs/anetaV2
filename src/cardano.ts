@@ -498,7 +498,7 @@ export class CardanoWatcher{
             chunk.block.sort((a , b) =>  Number(a.chain.value.header.height - b.chain.value.header.height));
             for (const block of chunk.block) {
                 //console.log("Block:",  block);
-                this.handleNewBlock(block.chain.value as CardanoBlock);
+               await this.handleNewBlock(block.chain.value as CardanoBlock);
             };
             console.timeEnd("Chunk")
             //set tip to the last block
