@@ -508,7 +508,7 @@ export class CardanoWatcher{
             const FIVE_MIN =5 * 60 * 1000
             console.time("NextChunkFetch")
             chunk =await Promise.race([
-                await  rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize})    ,
+                rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize})    ,
                 new Promise<null>((resolve) => setTimeout(() => resolve(null), FIVE_MIN))
             ]);
             console.timeEnd("NextChunkFetch")
