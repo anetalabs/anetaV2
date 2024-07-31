@@ -475,9 +475,7 @@ export class CardanoWatcher{
 
 
     async dumpHistory(){
-
-        
-        try{
+    try{
         const chunkSize = 100; 
         let tip = await this.mongo.collection("height").findOne({type: "top"});
         console.log("tip" , tip, this.config.startPoint);
@@ -492,10 +490,12 @@ export class CardanoWatcher{
         let chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize})
         console.log("Chunk", chunk);    
         
-        while(chunk && chunk.nextToken ){
+        while(chunk && chunk.nextToken && chunk.block.length === 100){
             console.time("Chunk")
             console.log(chunk.nextToken)
             tipPoint = chunk.nextToken;
+            //sort the blocks by slot
+            chunk.block.sort((a , b) =>  Number(a.chain.value.header.slot - b.chain.value.header.slot));
             for (const block of chunk.block) {
                 //console.log("Block:",  block);
                 this.handleNewBlock(block.chain.value as CardanoBlock);
@@ -512,11 +512,9 @@ export class CardanoWatcher{
         console.log(e);
        await this.dumpHistory();
     }
-
-
         //exit the process
-        console.log("Done Dumping History");
-       }
+    console.log("Done Dumping History");
+    }
 
     removeConsumedRequests( requests: Lucid.UTxO[]){
         this.rejectionQueue.forEach((request) => {
