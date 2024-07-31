@@ -3,6 +3,7 @@ import { toHexString, txId,  hexToString } from "./helpers.js";
 import * as Lucid  from 'lucid-cardano'
 import { CardanoSyncClient , CardanoBlock , CardanoQueryClient} from "@utxorpc/sdk";
 import {MetadatumArray} from  "@utxorpc/spec/lib/utxorpc/v1alpha/cardano/cardano_pb.js";
+import {DumpHistoryResponse} from "@utxorpc/spec/lib/utxorpc/v1alpha/sync/sync_pb.js";
 import {cardanoConfig, secretsConfig, mintRequest , MintRequestSchema, RedemptionRequestSchema, utxo, redemptionRequest, protocolConfig} from "./types.js"
 import axios from "axios";
 import { getDb } from "./db.js";
@@ -487,7 +488,8 @@ export class CardanoWatcher{
         }
         console.log("Starting sync from tip", tipPoint);
         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers : this.config.utxoRpc.headers} );
-        let chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize})
+        let chunk : DumpHistoryResponse | null
+        chunk =  await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize})
         console.log("Chunk", chunk);    
         
         while(chunk && chunk.nextToken && chunk.block.length === 100){
@@ -503,8 +505,12 @@ export class CardanoWatcher{
             };
             console.timeEnd("Chunk")
             //set tip to the last block
+            const FIVE_MIN =5 * 60 * 1000
             console.time("NextChunkFetch")
-            chunk = await rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize})
+            chunk =await Promise.race([
+                await  rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize})    ,
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), FIVE_MIN))
+            ]);
             console.timeEnd("NextChunkFetch")
         }
 
