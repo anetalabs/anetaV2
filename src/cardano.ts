@@ -267,7 +267,7 @@ export class CardanoWatcher{
         let requestTxHash = txDetails.inputs[0].transaction_id;
         let requestIndex = Number(txDetails.inputs[0].index);
         const requestListing = this.confescationQueue.find((request) => request.txHash === requestTxHash && request.index === requestIndex);
-        if(!requestListing) throw new Error("Request not found in rejection queue");
+        if(!requestListing) throw new Error("Request not found in confescation queue");
         const amIaSigner = txDetails.required_signers.some(async (signature : string) => signature === this.myKeyHash);
         if(!amIaSigner) throw new Error("Not a signer for this request");
         const mintClean = txDetails.mint === null;
@@ -497,7 +497,7 @@ export class CardanoWatcher{
         console.log("Starting sync from tip", tipPoint);
         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers : this.config.utxoRpc.headers} );
         let chunk : DumpHistoryResponse | null
-        const FIVE_MIN = 1 * 60 * 1000
+        const FIVE_MIN = 5 * 60 * 1000
         chunk =  await withTimeout(rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize}),FIVE_MIN)
         console.log("Chunk", chunk);    
         
