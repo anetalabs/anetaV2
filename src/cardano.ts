@@ -493,6 +493,7 @@ export class CardanoWatcher{
         while(chunk && chunk.nextToken && chunk.block.length === 100){
             console.time("Chunk")
             console.log(chunk.nextToken)
+            console.log("Chunk", chunk.block.length);
             tipPoint = chunk.nextToken;
             //sort the blocks by slot
             chunk.block.sort((a , b) =>  Number(a.chain.value.header.height - b.chain.value.header.height));
