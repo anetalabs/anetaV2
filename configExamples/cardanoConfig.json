@@ -1,17 +1,23 @@
 {
         "DbName" : "cNeta",
-        "network": "preview",
+        "network": "preprod",
         "mongo": {
-            "connectionString": "mongodb://127.0.0.1:27017"
+            "connectionString": "mongodb://mongo:27017"
         },
         "lucid":{
             "provider": {
                 "type": "blockfrost",
-                "host": "https://cardano-preview.blockfrost.io/api/v0"
+                "host": "https://cardano-preprod.blockfrost.io/api/v0",
+                "projectId": "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2"
+
             }
-        }, 
-        "utxoRpc": {
-            "host": "https://preview.utxorpc-v0.demeter.run",
-            "headers":  {"dmtr-api-key": "dmtr_utxorpc14cjctqdg5lhr8gpegjggh4x45grk4cwq"} 
-        }
+        },
+	 "utxoRpc": {
+            "host": "http://dolos:50051",
+            "headers":  {}
+        },
+    "startPoint" :{
+       "hash": "8070cd496261684f29822d1ceb5ceb93a89a9273399078cad8f561f8eff1408e",
+       "slot": 65403065
+    }
 }
