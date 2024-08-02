@@ -1,4 +1,9 @@
 ## Setup 
+Before running any of the scripts, you need to install the dependencies. 
+```bash
+npm install
+```
+
 All the following commands should be run from the `scripts` folder.
 ```bash
 cd scripts
