@@ -32,6 +32,12 @@ To bootstrap the dolos node using mithril, run the following command: [Important
 docker run -it   -p 50051:50051   -v "$(pwd)/config/dolos.toml:/etc/dolos/daemon.toml"   -v "$(pwd)/dolos/preprod/genesis:/etc/dolos/genesis"   -v "$(pwd)/../data/dolos:/data"   --entrypoint sh   ghcr.io/txpipe/dolos:latest   -c " dolos bootstrap "
 ```
 
+Create configuration from example files
+```bash
+mkdir config
+cp configExamples/* config
+```
+
 To start a guardian angel
 ```bash
 docker compose up -d
