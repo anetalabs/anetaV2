@@ -1,7 +1,7 @@
 import { Db } from "mongodb";
 import { toHexString, txId,  hexToString } from "./helpers.js";
 import * as Lucid  from 'lucid-cardano'
-import { CardanoSyncClient , CardanoBlock , CardanoQueryClient} from "@utxorpc/sdk";
+import { CardanoSyncClient  , CardanoQueryClient} from "@utxorpc/sdk";
 import {MetadatumArray} from  "@utxorpc/spec/lib/utxorpc/v1alpha/cardano/cardano_pb.js";
 import {DumpHistoryResponse} from "@utxorpc/spec/lib/utxorpc/v1alpha/sync/sync_pb.js";
 import {cardanoConfig, secretsConfig, mintRequest , MintRequestSchema, RedemptionRequestSchema, utxo, redemptionRequest, protocolConfig} from "./types.js"
@@ -514,7 +514,7 @@ export class CardanoWatcher{
             chunk.block.sort((a , b) =>  Number(a.chain.value.header.height - b.chain.value.header.height));
             for (const block of chunk.block) {
                 //console.log("Block:",  block);
-               await this.handleNewBlock(block.chain.value as CardanoBlock);
+               await this.handleNewBlock(block.chain.value );
             };
             console.timeEnd("Chunk")
             //set tip to the last block
@@ -677,7 +677,7 @@ export class CardanoWatcher{
     }
 
     
-    async handleUndoBlock(block: CardanoBlock){
+    async handleUndoBlock(block){
         let blockHeight = block.header.height;
         const blockHash = Buffer.from(block.header.hash).toString('hex');
         await this.mongo.collection("mint").deleteMany({height: blockHeight});
@@ -752,7 +752,7 @@ export class CardanoWatcher{
         }
     }
     
-    async handleNewBlock(block: CardanoBlock) : Promise<Boolean>{
+    async handleNewBlock(block) : Promise<Boolean>{
         try{
             let tip = await this.mongo.collection("height").findOne({type: "top"});
 
@@ -800,7 +800,7 @@ export class CardanoWatcher{
         return  data.data.inputs[0].address;
     }
 
-    async registerNewBlock(block: CardanoBlock){
+    async registerNewBlock(block){
         await Promise.all(block.body.tx.map(async (tx) => {
             // find all mints of cBTC
 
