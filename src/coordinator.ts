@@ -6,7 +6,6 @@ import { redemptionRequest, mintRequest,  utxo , protocolConfig, MintRequestSche
 import {Psbt} from "bitcoinjs-lib";
 import { getDb } from "./db.js";
 import { Collection } from "mongodb";
-import { CardanoBlock } from "@utxorpc/sdk";
 
 enum state {
     open,
@@ -405,7 +404,7 @@ export class Coordinator{
         }
     }
 
-    async loadBurn(tx : Tx, block : CardanoBlock, redemptionTx: string){
+    async loadBurn(tx : Tx, block , redemptionTx: string){
 
         console.log("Loading burn", tx.toJson(),  redemptionTx);   
         const listing = await this.redemptionDb.findOne({ currentTransaction : redemptionTx });
