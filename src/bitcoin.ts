@@ -234,7 +234,7 @@ export class BitcoinWatcher{
             let amountToSend = 0
             
             requests.forEach((request) => {
-                const amount = coordinator.calculateRedemptionAmount(request);
+                const amount =  Math.round(coordinator.calculateRedemptionAmount(request));
                 txb.addOutput({address: request.decodedDatum , value: amount });
                 amountToSend += amount;
             });
