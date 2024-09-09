@@ -238,7 +238,8 @@ export class BitcoinWatcher{
                 txb.addOutput({address: request.decodedDatum , value: amount });
                 amountToSend += amount;
             });
-            const change = total - amountToSend - fee;
+
+            const change = Math.round( total - amountToSend - fee);
             if (change < 0){
                 //remove the largest request and try again
                 const trimedRequests = requests.sort((a, b) => coordinator.calculateRedemptionAmount(b) - coordinator.calculateRedemptionAmount(a)).slice(1);
@@ -246,6 +247,7 @@ export class BitcoinWatcher{
                 return this.craftRedemptionTransaction( trimedRequests)
             }
             txb.addOutput({address: this.getVaultAddress(), value: change });
+            
             
             
             // if (amountToSend < requests.reduce((acc, request) => acc + Number(request.assets[ADAWatcher.getCBtcId()]), 0)) throw new Error('Not enough funds');
