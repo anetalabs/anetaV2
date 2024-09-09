@@ -282,7 +282,7 @@ export class Coordinator{
 
     calculateRedemptionAmount(request: redemptionRequest){
         const cBtcId = ADAWatcher.getCBtcId();
-        return  Number(request.assets[cBtcId])  - this.config.fixedFee - this.config.redemptionMargin *  Number(request.assets[cBtcId]);
+        return  Math.round(Number(request.assets[cBtcId])  - this.config.fixedFee - this.config.redemptionMargin *  Number(request.assets[cBtcId]));
     }
 
     getPaymentPaths(){  
