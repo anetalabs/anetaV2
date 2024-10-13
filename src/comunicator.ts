@@ -541,7 +541,6 @@ export class Communicator {
 
         socket.on('signatureResponse',async (data) => {
             // if not leader, ignore
-            console.log("Signature response received", data);
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
             console.log("Signature response received", data);
             const pendingTx = this.transactionsBuffer.find((tx) => tx.txId === data.txId);
@@ -554,7 +553,7 @@ export class Communicator {
                 pendingTx.signatures.push(data.signature.toString());
             if(pendingTx.signatures.length >= this.topology.m){
                 const completedTx = (await pendingTx.tx.assemble(pendingTx.signatures).complete())
-                ADAWatcher.submitTransaction(completedTx);
+                await ADAWatcher.submitTransaction(completedTx);
                 pendingTx.status = "completed";
             }
         });
