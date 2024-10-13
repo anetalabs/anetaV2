@@ -123,34 +123,27 @@ export class CardanoWatcher{
                 const openRequests =await this.lucid.config().provider.getUtxos(this.address);
                 const request = requests;
                 console.log(request)
+                const assets = {} 
+                assets[this.cBTCPolicy + this.cBtcHex] = -requests.reduce((acc, request) => acc + Number(request.assets[this.cBTCPolicy +  this.cBtcHex]) , 0);
                 
-                const spendingTx =  this.lucid.newTx().attach.SpendingValidator(this.mintingScript).collectFrom(requests, LucidEvolution.Data.void()).readFrom([this.configUtxo])
+                const spendingTx =  this.lucid.newTx().collectFrom(requests, LucidEvolution.Data.void())
+                                                      .readFrom([this.configUtxo])
+                                                      .attach.Script(this.mintingScript)
+                                                      .mintAssets(assets, LucidEvolution.Data.void())
+                                                      .attachMetadata(METADATA_TAG, metadata)
+                                                      .validTo(new Date().getTime() + 14400000);
                 const quorum = communicator.getQuorum();
                 
-                const signersTx = this.lucid.newTx()
                 
                 quorum.forEach((signer) => {
-                    signersTx.addSigner(signer);
+                    spendingTx.addSigner(signer);
                 });
 
                 
-                const referenceInput = this.lucid.newTx().readFrom([this.configUtxo]);
-                const assets = {} 
-                assets[this.cBTCPolicy + this.cBtcHex] = -requests.reduce((acc, request) => acc + Number(request.assets[this.cBTCPolicy +  this.cBtcHex]) , 0);
-                const mintTx = this.lucid.newTx().attach.MintingPolicy(this.mintingScript).mintAssets(assets, LucidEvolution.Data.void()).attachMetadata(METADATA_TAG, metadata);
                 // 4 hours later than now f
-
-
-                const ttl = this.lucid.newTx().validTo(new Date().getTime() + 14400000);
             
-                const finalTx = this.lucid.newTx()
-                                        .compose(signersTx)
-                                        .compose(spendingTx)
-                                        .compose(mintTx)
-                                        .compose(referenceInput)
-                                        .compose(ttl);
-    
-                const completedTx = await finalTx.complete({changeAddress: coordinator.getConfig().adminAddress,  coinSelection : false});
+          
+                const completedTx = await spendingTx.complete({changeAddress: coordinator.getConfig().adminAddress,  coinSelection : false});
                 const signature = await  completedTx.partialSign.withWallet();
                 // const signedTx = await completedTx.assemble([signatures]).complete();
                 // console.log("signature", signatures);
@@ -295,7 +288,10 @@ export class CardanoWatcher{
                 const openRequests =await this.lucid.config().provider.getUtxos(this.address);
                 const request = openRequests.find( (request) => request.txHash === txHash && request.outputIndex === index);
                 console.log(request)
-                const spendingTx =  this.lucid.newTx().attach.SpendingValidator(this.mintingScript).collectFrom([request], LucidEvolution.Data.void() ).readFrom([this.configUtxo])
+                const spendingTx =  this.lucid.newTx()
+                                            .attach.SpendingValidator(this.mintingScript)
+                                            .collectFrom([request], LucidEvolution.Data.void() )
+                                            .readFrom([this.configUtxo])
                 
                 
                 
@@ -303,10 +299,6 @@ export class CardanoWatcher{
                     spendingTx.addSigner(signer);
                 });
 
-                
-                spendingTx.readFrom([this.configUtxo]);
-                
-             
                 try{
                     const tx = await spendingTx.complete({changeAddress: coordinator.config.adminAddress,  coinSelection : false , localUPLCEval : false});
                     const signature = await  tx.partialSign.withWallet();

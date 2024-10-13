@@ -42,9 +42,6 @@ export class BitcoinWatcher{
         this.address =  Array.from({length: protocol.paymentPaths}, (_, index) => index).map((index) => this.getAddress(index))
         console.log("Vault Address:", this.getVaultAddress())
         this.watcherSync()
-
-
-
         const seed = bip39.mnemonicToSeedSync(secrets.seed);
         const bip32 = BIP32Factory(ecc);
         this.root = bip32.fromSeed(seed);
