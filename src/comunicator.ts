@@ -1,9 +1,12 @@
 import { ADAWatcher, BTCWatcher, coordinator } from './index.js';
-import { topology, secretsConfig, pendingCardanoTransaction, pendingBitcoinTransaction, NodeStatus, redemptionController , redemptionState } from './types.js';
+import { topology, secretsConfig, pendingCardanoTransaction, pendingBitcoinTransaction, NodeStatus, redemptionController , redemptionState , cardanoConfig} from './types.js';
 import { Server, Socket as ServerSocket } from 'socket.io';
 import { Socket as ClientSocket } from 'socket.io-client';
 import  Client  from 'socket.io-client';
-import * as Lucid  from 'lucid-cardano';
+//import * as Lucid  from 'lucid-cardano';
+import * as LucidEvolution from '@lucid-evolution/lucid';
+
+import { CardanoWatcher } from './cardano.js';
 const HEARTBEAT = 5000;
 const ELECTION_TIMEOUT = 5;
 
@@ -30,36 +33,38 @@ interface angelPeer {
     state: NodeStatus;
 }
 
-
 export class Communicator {
     private peers: angelPeer[];
-    private lucid: Lucid.Lucid;
+    private lucid: LucidEvolution.LucidEvolution;
     private address: string;
     private topology: topology;
     private leaderTimeout: Date;
+    private cardanoNetwork: LucidEvolution.Network;
     private transactionsBuffer: pendingCardanoTransaction[] = [];
     private btcTransactionsBuffer: pendingBitcoinTransaction[] = [];
     private Iam: number;
     private networkStatus : {peers: any, leaderTimeout: number};
-    constructor(topology: topology, secrets: secretsConfig , port: number) {
+    constructor(topology: topology, secrets: secretsConfig , port: number , cardanoConfig: cardanoConfig) {
         this.heartbeat = this.heartbeat.bind(this);
-
+        this.cardanoNetwork = cardanoConfig.network.charAt(0).toUpperCase() + cardanoConfig.network.slice(1) as LucidEvolution.Network;
 
         this.topology = topology;
         (async () => {
             try {
-                this.lucid = await Lucid.Lucid.new();
-                this.lucid.selectWalletFromSeed(secrets.seed);
-                const pubKey =  this.lucid.utils.getAddressDetails(await this.lucid.wallet.address()).paymentCredential.hash;
+                const provider = new LucidEvolution.Blockfrost(cardanoConfig.lucid.provider.host, cardanoConfig.lucid.provider.projectId)
+                
+                this.lucid = await LucidEvolution.Lucid(provider, this.cardanoNetwork);
+                this.lucid.selectWallet.fromSeed(secrets.seed);
+                const pubKey = LucidEvolution.getAddressDetails(await this.lucid.wallet().address()).paymentCredential.hash;
                 //fing pubkey in topology or throw error
-
+                
                 const found = topology.topology.findIndex((node: { AdaPkHash: string }) => node.AdaPkHash === pubKey);
                 console.log('Pubkey:', pubKey, found);
                 if(found == -1){
                     throw new Error('Pubkey not found in topology');
                 }
                 this.Iam = found;
-                this.address = this.lucid.utils.credentialToAddress({type: "Key", hash: pubKey});
+                this.address = LucidEvolution.credentialToAddress(this.cardanoNetwork,{type: "Key", hash: pubKey});
                 this.peers = initializeNodes(topology, this.lucid, this.Iam);
                 //while not synced delay 
   
@@ -78,7 +83,7 @@ export class Communicator {
             }
         })();
         
-        function initializeNodes(topology: topology, lucid: Lucid.Lucid, Iam: number ) {
+        function initializeNodes(topology: topology, lucid: LucidEvolution.LucidEvolution, Iam: number ) {
             return topology.topology.map((node, index) => {
                 return {
                     id: node.name,
@@ -89,7 +94,7 @@ export class Communicator {
                     lastApplied: 0,
                     port: node.port,
                     ip: node.ip,
-                    address: lucid.utils.credentialToAddress({type: "Key", hash: node.AdaPkHash}) ,
+                    address: LucidEvolution.credentialToAddress(this.cardanoNetwork,{type: "Key", hash: node.AdaPkHash}) ,
                     keyHash: node.AdaPkHash, 
                     outgoingConnection: null,
                     incomingConnection: null,
@@ -252,6 +257,7 @@ export class Communicator {
             if( new Date().getTime() - new Date(this.leaderTimeout).getTime() > ELECTION_TIMEOUT * HEARTBEAT){
                 this.election();
             }
+            
         }
 
         if(  [NodeStatus.Learner, NodeStatus.Monitor, NodeStatus.Candidate].includes(this.peers[this.Iam].state)  && this.countVotes() !== null){
@@ -322,7 +328,7 @@ export class Communicator {
          socket.emit('challenge', challenge);
          socket.on('challengeResponse', async (response) => {
             console.log("Challenge response received")
-            const verified = this.lucid.verifyMessage(response.address ,this.stringToHex(challenge), response);
+            const verified = LucidEvolution.verifyData(response.address , LucidEvolution.getAddressDetails(response.address).paymentCredential?.hash ,this.stringToHex(challenge), response);
             if(verified){
                 const peerindex = this.peers.findIndex(peer => peer.address === response.address);
                 this.applyRuntimeListeners(socket,peerindex);
@@ -406,7 +412,7 @@ export class Communicator {
         socket.on('vote', (vote ) => {   
             try{
                 const decodedVote : vote= JSON.parse(vote.vote);
-                const verified = this.lucid.verifyMessage(decodedVote.voter ,this.stringToHex(vote.vote), vote.signature);
+                const verified = LucidEvolution.verifyData(decodedVote.voter , LucidEvolution.getAddressDetails(decodedVote.voter).paymentCredential?.hash ,this.stringToHex(vote.vote), vote.signature);
                 const addressIsPeer = (this.peers.findIndex(peer => peer.address === decodedVote.voter) !== -1);
                 if(verified && addressIsPeer && Math.abs(decodedVote.time - new Date().getTime() ) < HEARTBEAT){
                     this.peers[index].votedFor = decodedVote.candidate;
@@ -528,7 +534,7 @@ export class Communicator {
 
             const pendingTx = this.transactionsBuffer.find((tx) => tx.txId === data.txId);
             const signatureInfo = ADAWatcher.decodeSignature(data.signature);
-            if (!signatureInfo.witness.vkeys().get(0).vkey().public_key().verify( Buffer.from(pendingTx.tx.toHash(), 'hex'), signatureInfo.witness.vkeys().get(0).signature())){
+            if (!signatureInfo.witness.vkeywitnesses().get(0).vkey().verify( Buffer.from(pendingTx.tx.toHash(), 'hex'), signatureInfo.witness.vkeywitnesses().get(0).ed25519_signature())){
                 console.log("Invalid signature");
                 return;
             }
@@ -653,7 +659,7 @@ export class Communicator {
 
         socket.on('challenge', async (challenge) => {
             console.log("Challenge received")
-            const message : Object= await this.lucid.wallet.signMessage(this.address, this.stringToHex(challenge));
+            const message : Object= await this.lucid.wallet().signMessage(this.address, this.stringToHex(challenge));
             message["address"] = this.address;
             socket.emit('challengeResponse', message);
         });

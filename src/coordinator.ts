@@ -316,7 +316,7 @@ export class Coordinator{
            for(const redemption of redemptionStates) {
                 const burnTx =  ADAWatcher.txCompleteFromString(redemption.burningTransaction.tx);     
                     const signatureInfo = ADAWatcher.decodeSignature(signature);
-                    if (!signatureInfo.witness.vkeys().get(0).vkey().public_key().verify( Buffer.from(burnTx.toHash(), 'hex'), signatureInfo.witness.vkeys().get(0).signature())){
+                    if (!signatureInfo.witness.vkeywitnesses().get(0).vkey().verify( Buffer.from(burnTx.toHash(), 'hex'), signatureInfo.witness.vkeywitnesses().get(0).ed25519_signature())){
                         console.log("Invalid signature");
                         return;
                     }

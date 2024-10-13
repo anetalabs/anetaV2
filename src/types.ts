@@ -1,5 +1,6 @@
 import exp from 'constants'
-import * as Lucid  from 'lucid-cardano'
+//import * as Lucid  from 'lucid-cardano'
+import * as LucidEvolution from '@lucid-evolution/lucid'
 import * as bitcoin from 'bitcoinjs-lib'
 import { BatchType } from 'mongodb'
 
@@ -44,7 +45,7 @@ export type pendingCardanoTransaction = {
     status: "pending" | "completed" ,
     txId: string,
     signatures: string[],
-    tx: Lucid.TxComplete,
+    tx: LucidEvolution.TxSignBuilder,
     metadata? : any,
     redemptionTx?: string
 }
@@ -113,20 +114,20 @@ export type secretsConfig ={
     "seed" : string
 }
 
-export const MintRequestSchema = Lucid.Data.Object({
-  amount: Lucid.Data.Integer(),
-  path: Lucid.Data.Integer(),
+export const MintRequestSchema = LucidEvolution.Data.Object({
+  amount: LucidEvolution.Data.Integer(),
+  path: LucidEvolution.Data.Integer(),
 });
 
-export const RedemptionRequestSchema = Lucid.Data.Object({
-  destinationAddress: Lucid.Data.Bytes()
+export const RedemptionRequestSchema = LucidEvolution.Data.Object({
+  destinationAddress: LucidEvolution.Data.Bytes()
 });
 
-export interface mintRequest extends Lucid.UTxO{ 
+export interface mintRequest extends LucidEvolution.UTxO{ 
   decodedDatum:  typeof MintRequestSchema
 }
 
-export interface redemptionRequest extends Lucid.UTxO{
+export interface redemptionRequest extends LucidEvolution.UTxO{
   decodedDatum: string
 }
 

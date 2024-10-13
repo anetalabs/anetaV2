@@ -1,7 +1,6 @@
 import BitcoinCore from "bitcoin-core"
 import * as bitcoin from 'bitcoinjs-lib';
 import {ECPairFactory}  from 'ecpair'
-import { TxComplete , C} from 'lucid-cardano'
 import * as ecc  from 'tiny-secp256k1'
 import { EventEmitter } from 'events';
 import {bitcoinConfig, topology, secretsConfig,  redemptionRequest, protocolConfig ,redemptionController} from "./types.js"
@@ -265,7 +264,7 @@ export class BitcoinWatcher{
 
             const txc = ADAWatcher.txCompleteFromString(redemption.burningTransaction.tx);
             const [txDetails, cTx] = ADAWatcher.decodeTransaction(txc);
-            const medatadata = JSON.parse(cTx.auxiliary_data().metadata().to_js_value()[String(METADATA_TAG)]);
+            const medatadata = cTx.auxiliary_data().metadata().get(BigInt(METADATA_TAG)).to_json_value();
             const txString = medatadata.list.map((substring) =>  substring.string ).join("") 
             if(txString !== redemption.currentTransaction) throw new Error('Invalid burn transaction hash');
         
@@ -301,7 +300,7 @@ export class BitcoinWatcher{
         const txb = bitcoin.Psbt.fromHex(tx, {network : bitcoin.networks[this.config.network] });
         const txc = ADAWatcher.txCompleteFromString(burnTx);
         const [txDetails, cTx] = ADAWatcher.decodeTransaction(txc);
-        const medatadata = JSON.parse(cTx.auxiliary_data().metadata().to_js_value()[String(METADATA_TAG)]);
+        const medatadata = JSON.parse(cTx.auxiliary_data().metadata().get(BigInt(METADATA_TAG)).to_json_value());
         console.log(medatadata)
         const txString = medatadata.list.map((substring) =>  substring.string ).join("")
         let redemptionRequests =  ADAWatcher.getRedemptionRequests();

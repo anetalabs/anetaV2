@@ -36,7 +36,7 @@ async function main() {
     connect(cardanoConfig.mongo.connectionString);
     
     
-    communicator = new Communicator(topology, secrets, args.port || 3000)
+    communicator = new Communicator(topology, secrets, args.port || 3000, cardanoConfig)
     notification = new NotificationManager(notificationConfig)
     BTCWatcher = new BitcoinWatcher(bitcoinConfig, topology, secrets, protocolConfig);
     ADAWatcher = new CardanoWatcher(cardanoConfig,  secrets, protocolConfig);

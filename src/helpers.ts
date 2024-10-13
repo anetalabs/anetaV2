@@ -1,6 +1,6 @@
-import { UTxO } from "lucid-cardano";
+import { redemptionRequest, mintRequest} from "./types.js";
 
-export function requestId(request: UTxO): string{
+export function requestId(request : redemptionRequest | mintRequest): string{
     return request.txHash + request.outputIndex.toString();
 }
 

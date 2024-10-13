@@ -14,7 +14,7 @@ async function main(){
 
     const seed = bip39.mnemonicToSeedSync(seedPhrase);
     const bip32 = BIP32Factory(ecc);
-    const root = bip32. fromSeed(seed);
+    const root = bip32.fromSeed(seed);
     const path = "m/44'/0'/0'"; // This is the BIP44 path for the first address in the first account of a Bitcoin wallet
     const node = root.derivePath(path);
 
