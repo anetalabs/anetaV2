@@ -40,7 +40,6 @@ export class BitcoinWatcher{
         this.protocol = protocol
         this.client = new BitcoinCore(config.bitcoinRPC);
         this.address =  Array.from({length: protocol.paymentPaths}, (_, index) => index).map((index) => this.getAddress(index))
-        console.log("paymentA Address:", this.address)
         console.log("Vault Address:", this.getVaultAddress())
         this.watcherSync()
 

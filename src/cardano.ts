@@ -46,7 +46,6 @@ export class CardanoWatcher{
          
            this.lucid = await LucidEvolution.Lucid(new LucidEvolution.Blockfrost(config.lucid.provider.host, config.lucid.provider.projectId), (config.network.charAt(0).toUpperCase() + config.network.slice(1)) as LucidEvolution.Network);
            this.lucid.selectWallet.fromSeed(secrets.seed);
-           console.log("Minting Script Address:", this.mintingScript);
            this.cBTCPolicy = LucidEvolution.mintingPolicyToId(this.mintingScript);
            console.log("Minting PolicyId:", this.cBTCPolicy);
            this.cBtcHex = "63425443";
@@ -61,6 +60,12 @@ export class CardanoWatcher{
         })();
         
         console.log("cardano watcher")
+    }
+
+    async newLucidInstance (){
+        const network = (this.config.network.charAt(0).toUpperCase() + this.config.network.slice(1)) as LucidEvolution.Network;
+        console.log(" Lucid Network", network);
+       return await LucidEvolution.Lucid(new LucidEvolution.Blockfrost(this.config.lucid.provider.host, this.config.lucid.provider.projectId), network);
     }
 
 
@@ -507,8 +512,12 @@ export class CardanoWatcher{
         chunk =  await withTimeout(rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize}),FIVE_MIN)
         console.log("Chunk", chunk);    
         
+        let processedHeight = tip ? tip.height : 0;
+
         while(chunk && chunk.nextToken && chunk.block.length > 0){
             console.time("Chunk")
+            //const blockHeights = chunk.block.map(b => Number(b.chain.value.header.height));
+            //console.log(`Block heights in chunk: ${JSON.stringify(blockHeights)}`);
             console.log("Processing chunk with", chunk.block.length, "blocks");
             tipPoint = chunk.nextToken;
             
@@ -516,7 +525,13 @@ export class CardanoWatcher{
             chunk.block.sort((a, b) => Number(a.chain.value.header.height) - Number(b.chain.value.header.height));
             
             for (const block of chunk.block) {
-                await this.handleNewBlock(block.chain.value);
+                const blockHeight = Number(block.chain.value.header.height);
+                if (blockHeight > processedHeight) {
+                    await this.handleNewBlock(block.chain.value);
+                    processedHeight = blockHeight;
+                } else {
+                    console.log(`Skipping already processed block ${blockHeight}, processed height: ${processedHeight}`);
+                }
             };
             console.timeEnd("Chunk")
             

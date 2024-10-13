@@ -44,28 +44,33 @@ export class Communicator {
     private btcTransactionsBuffer: pendingBitcoinTransaction[] = [];
     private Iam: number;
     private networkStatus : {peers: any, leaderTimeout: number};
-    constructor(topology: topology, secrets: secretsConfig , port: number , cardanoConfig: cardanoConfig) {
+    constructor(topology: topology, secrets: secretsConfig , port: number ) {
         this.heartbeat = this.heartbeat.bind(this);
-        this.cardanoNetwork = cardanoConfig.network.charAt(0).toUpperCase() + cardanoConfig.network.slice(1) as LucidEvolution.Network;
-
+        
         this.topology = topology;
         (async () => {
             try {
-                const provider = new LucidEvolution.Blockfrost(cardanoConfig.lucid.provider.host, cardanoConfig.lucid.provider.projectId)
                 
-                this.lucid = await LucidEvolution.Lucid(provider, this.cardanoNetwork);
+                // Add a timeout to the getProtocolParameters call
+           
+                // sleep for 10 seconds
+                await new Promise((resolve) => setTimeout(resolve, 10000));
+                
+                this.lucid = await ADAWatcher.newLucidInstance();
+                this.cardanoNetwork = this.lucid.config().network;
                 this.lucid.selectWallet.fromSeed(secrets.seed);
                 const pubKey = LucidEvolution.getAddressDetails(await this.lucid.wallet().address()).paymentCredential.hash;
                 //fing pubkey in topology or throw error
-                
+
                 const found = topology.topology.findIndex((node: { AdaPkHash: string }) => node.AdaPkHash === pubKey);
                 console.log('Pubkey:', pubKey, found);
                 if(found == -1){
                     throw new Error('Pubkey not found in topology');
                 }
+
                 this.Iam = found;
                 this.address = LucidEvolution.credentialToAddress(this.cardanoNetwork,{type: "Key", hash: pubKey});
-                this.peers = initializeNodes(topology, this.lucid, this.Iam);
+                this.peers = initializeNodes(topology, this.Iam, this.cardanoNetwork);
                 //while not synced delay 
   
                 while(!(ADAWatcher.inSync() && BTCWatcher.inSync())){
@@ -80,10 +85,13 @@ export class Communicator {
                  
             } catch (err) {
                 console.error('Error starting lucid:', err);
+                if (err.cause) {
+                    console.error('Cause:', err.cause);
+                }
             }
         })();
         
-        function initializeNodes(topology: topology, lucid: LucidEvolution.LucidEvolution, Iam: number ) {
+        function initializeNodes(topology: topology,  Iam: number, cardanoNetwork: LucidEvolution.Network) {
             return topology.topology.map((node, index) => {
                 return {
                     id: node.name,
@@ -94,7 +102,7 @@ export class Communicator {
                     lastApplied: 0,
                     port: node.port,
                     ip: node.ip,
-                    address: LucidEvolution.credentialToAddress(this.cardanoNetwork,{type: "Key", hash: node.AdaPkHash}) ,
+                    address: LucidEvolution.credentialToAddress(cardanoNetwork,{type: "Key", hash: node.AdaPkHash}) ,
                     keyHash: node.AdaPkHash, 
                     outgoingConnection: null,
                     incomingConnection: null,
@@ -177,11 +185,11 @@ export class Communicator {
         } 
     
         if(peer && peer.outgoingConnection ){
-            peer.outgoingConnection.emit('vote', {vote: JSON.stringify(vote), signature: await this.lucid.wallet.signMessage(this.peers[this.Iam].address, this.stringToHex(JSON.stringify(vote)))});
+            peer.outgoingConnection.emit('vote', {vote: JSON.stringify(vote), signature: await this.lucid.wallet().signMessage(this.peers[this.Iam].address, this.stringToHex(JSON.stringify(vote)))});
         }else {
             this.peers.forEach(async (node : angelPeer) => {
                 if (node.outgoingConnection) {
-                    node.outgoingConnection.emit('vote', {vote: JSON.stringify(vote), signature: await this.lucid.wallet.signMessage(this.peers[this.Iam].address, this.stringToHex(JSON.stringify(vote)))});
+                    node.outgoingConnection.emit('vote', {vote: JSON.stringify(vote), signature: await this.lucid.wallet().signMessage(this.peers[this.Iam].address, this.stringToHex(JSON.stringify(vote)))});
                 }
             
             });
@@ -328,7 +336,9 @@ export class Communicator {
          socket.emit('challenge', challenge);
          socket.on('challengeResponse', async (response) => {
             console.log("Challenge response received")
-            const verified = LucidEvolution.verifyData(response.address , LucidEvolution.getAddressDetails(response.address).paymentCredential?.hash ,this.stringToHex(challenge), response);
+            const addressHex =  LucidEvolution.CML.Address.from_bech32(response.address).to_hex()  //this.stringToHex(response.address);
+            console.log("challenge response address", response, response.address);
+            const verified = LucidEvolution.verifyData(addressHex , LucidEvolution.getAddressDetails(response.address).paymentCredential?.hash ,this.stringToHex(challenge), response);
             if(verified){
                 const peerindex = this.peers.findIndex(peer => peer.address === response.address);
                 this.applyRuntimeListeners(socket,peerindex);
@@ -412,8 +422,9 @@ export class Communicator {
         socket.on('vote', (vote ) => {   
             try{
                 const decodedVote : vote= JSON.parse(vote.vote);
-                const verified = LucidEvolution.verifyData(decodedVote.voter , LucidEvolution.getAddressDetails(decodedVote.voter).paymentCredential?.hash ,this.stringToHex(vote.vote), vote.signature);
-                const addressIsPeer = (this.peers.findIndex(peer => peer.address === decodedVote.voter) !== -1);
+                const addressHex =  LucidEvolution.CML.Address.from_bech32(decodedVote.voter).to_hex()  //this.stringToHex(response.address);
+                const verified = LucidEvolution.verifyData(addressHex , LucidEvolution.getAddressDetails(decodedVote.voter).paymentCredential?.hash ,this.stringToHex(vote.vote), vote.signature);
+                const addressIsPeer = (this.peers.findIndex(peer => peer.address === decodedVote.voter) === index);
                 if(verified && addressIsPeer && Math.abs(decodedVote.time - new Date().getTime() ) < HEARTBEAT){
                     this.peers[index].votedFor = decodedVote.candidate;
                 }else{  
@@ -555,6 +566,7 @@ export class Communicator {
             
         });
 
+
         socket.on('updateRequest', async (data) => {
             // if not leader, ignore
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
@@ -658,7 +670,7 @@ export class Communicator {
 
 
         socket.on('challenge', async (challenge) => {
-            console.log("Challenge received")
+            console.log("Challenge received", challenge);
             const message : Object= await this.lucid.wallet().signMessage(this.address, this.stringToHex(challenge));
             message["address"] = this.address;
             socket.emit('challengeResponse', message);
