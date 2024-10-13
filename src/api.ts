@@ -21,15 +21,19 @@ export default class ApiServer {
       }
     });
     this.app.get('/',async (req, res) => {
-      const address = await ADAWatcher.getAddress();
-      const BTCpubKey = await BTCWatcher.getMyPublicKey();
-      const ADApubKey = await ADAWatcher.getMyKeyHash();
-      res.json({
+      try{
+        const address = await ADAWatcher.getAddress();
+        const BTCpubKey = await BTCWatcher.getMyPublicKey();
+        const ADApubKey = await ADAWatcher.getMyKeyHash();
+        res.json({
         address: address,
         BTCpubKey: BTCpubKey,
         ADApubKey: ADApubKey
-      });
-      })
+        });
+      }catch(e){
+        res.json({error: e});
+      }
+    });
 
 
     this.app.get('/quorum', (req, res) => { 

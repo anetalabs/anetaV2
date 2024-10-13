@@ -36,7 +36,7 @@ export class CardanoWatcher{
 
         this.mongo = getDb(config.DbName)
         console.log(typeof this.mongo)
-        this.mintingScript = {type: "PlutusV2" , script: prorocolConfig.contract};
+        this.mintingScript = {type: "PlutusV3" , script: prorocolConfig.contract};
         this.queryValidRequests = this.queryValidRequests.bind(this);
 
         this.cardanoNetwork = config.network.charAt(0).toUpperCase() + config.network.slice(1) as LucidEvolution.Network;
@@ -57,8 +57,7 @@ export class CardanoWatcher{
            console.log("Local Address", await this.lucid.wallet().address());    
             await this.dumpHistory();
             this.startIndexer();
-        })();
-        
+        })();        
         console.log("cardano watcher")
     }
 
@@ -67,7 +66,6 @@ export class CardanoWatcher{
         console.log(" Lucid Network", network);
        return await LucidEvolution.Lucid(new LucidEvolution.Blockfrost(this.config.lucid.provider.host, this.config.lucid.provider.projectId), network);
     }
-
 
     getDbName() : string{
       return  this.config.DbName;
@@ -144,14 +142,13 @@ export class CardanoWatcher{
 
                 const ttl = this.lucid.newTx().validTo(new Date().getTime() + 14400000);
             
-            
                 const finalTx = this.lucid.newTx()
                                         .compose(signersTx)
                                         .compose(spendingTx)
                                         .compose(mintTx)
                                         .compose(referenceInput)
                                         .compose(ttl);
-        
+    
                 const completedTx = await finalTx.complete({changeAddress: coordinator.getConfig().adminAddress,  coinSelection : false});
                 const signature = await  completedTx.partialSign.withWallet();
                 // const signedTx = await completedTx.assemble([signatures]).complete();
@@ -233,26 +230,19 @@ export class CardanoWatcher{
 
                 const openRequests =await this.lucid.config().provider.getUtxos(this.address);
                 const request = openRequests.find( (request) => request.txHash === txHash && request.outputIndex === index);
-                const spendingTx =  this.lucid.newTx().attach.SpendingValidator(this.mintingScript).collectFrom([request], LucidEvolution.Data.void() ).readFrom([this.configUtxo])
-                
-                
-                const signersTx = this.lucid.newTx()
+                console.log("request", request, this.configUtxo );
+                const spendingTx =  this.lucid.newTx()
+                                              .attach.SpendingValidator(this.mintingScript)
+                                              .collectFrom([request], LucidEvolution.Data.void() )
+                                              .readFrom([this.configUtxo])
                 
                 quorum.forEach((signer) => {
-                    signersTx.addSigner(signer);
+                    spendingTx.addSigner(signer);
                 });
 
                 
-                const referenceInput = this.lucid.newTx().readFrom([this.configUtxo]);
-                
-                const finalTx = this.lucid.newTx()
-                .compose(signersTx)
-                .compose(spendingTx)
-                
-                .compose(referenceInput);
-                
                 try{
-                    const tx = await finalTx.complete({changeAddress: await this.getUtxoSender(txHash, index),  coinSelection : false});
+                    const tx = await spendingTx.complete({setCollateral: 5_000_000n, changeAddress: await this.getUtxoSender(txHash, index),  coinSelection : false});
                     const signature = await  tx.partialSign.withWallet();
                     communicator.cardanoTxToComplete({type: "rejection", txId : tx.toHash(), signatures: [signature] , tx, status: "pending"});
                 }catch(e){
