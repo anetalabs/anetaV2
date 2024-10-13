@@ -262,7 +262,7 @@ export class BitcoinWatcher{
             console.log("checking redemption transaction")
 
             const txc = ADAWatcher.txCompleteFromString(redemption.burningTransaction.tx);
-            const [txDetails, cTx] = ADAWatcher.decodeTransaction(txc);
+            const [txDetails, cTx] = ADAWatcher.decodeTransaction(redemption.burningTransaction.tx);
             const medatadata = cTx.auxiliary_data().metadata().get(BigInt(METADATA_TAG)).to_json_value();
             const txString = medatadata.list.map((substring) =>  substring.string ).join("") 
             if(txString !== redemption.currentTransaction) throw new Error('Invalid burn transaction hash');
@@ -298,7 +298,7 @@ export class BitcoinWatcher{
         console.log("checking redemption transaction")
         const txb = bitcoin.Psbt.fromHex(tx, {network : bitcoin.networks[this.config.network] });
         const txc = ADAWatcher.txCompleteFromString(burnTx);
-        const [txDetails, cTx] = ADAWatcher.decodeTransaction(txc);
+        const [txDetails, cTx] = ADAWatcher.decodeTransaction(burnTx);
         const medatadata = JSON.parse(cTx.auxiliary_data().metadata().get(BigInt(METADATA_TAG)).to_json_value());
         console.log(medatadata)
         const txString = medatadata.list.map((substring) =>  substring.string ).join("")

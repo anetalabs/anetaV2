@@ -211,7 +211,8 @@ export class Communicator {
     getQuorum() : string[]{
      // get the n nodes with the oldest connection time
     // / return  ["78e88e01d77184e41ba7ceb36af9fb6844640ba9ea968a1aa97c8d6e","a85265597b7023b0c56f550a688c16a1408d21d8154ae50ec94bd734"].map((pkHash) => this.lucid.utils.credentialToAddress({type: "Key", hash: pkHash})) 
-        const quorum = this.peers
+      console.log("getting quorum", this.topology.m);
+      const quorum = this.peers
             .filter((node) => node.state === NodeStatus.Follower)
             .sort((a, b) => a.connectionTime.getTime() - b.connectionTime.getTime())
             .slice(0, this.topology.m-1)
@@ -313,7 +314,7 @@ export class Communicator {
     }
 
     private clearInvalidTransactions() {
-        this.transactionsBuffer = this.transactionsBuffer.filter((tx) => ADAWatcher.checkTransaction(tx.tx));
+        this.transactionsBuffer = this.transactionsBuffer.filter((tx) => ADAWatcher.checkTransaction(tx.tx.toCBOR({canonical : true})));
         this.btcTransactionsBuffer = this.btcTransactionsBuffer.filter((tx) => BTCWatcher.checkTransaction(tx.tx));
     }
 
@@ -451,7 +452,6 @@ export class Communicator {
             // if not leader, ignore
             try{
             if(this.peers[index].state !== NodeStatus.Leader || this.peers[this.Iam].state !== NodeStatus.Follower) return;
-          
                 switch (data.type) {
                     case "rejection":
                         await ADAWatcher.signReject(data);
@@ -541,8 +541,9 @@ export class Communicator {
 
         socket.on('signatureResponse',async (data) => {
             // if not leader, ignore
+            console.log("Signature response received", data);
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
-
+            console.log("Signature response received", data);
             const pendingTx = this.transactionsBuffer.find((tx) => tx.txId === data.txId);
             const signatureInfo = ADAWatcher.decodeSignature(data.signature);
             if (!signatureInfo.witness.vkeywitnesses().get(0).vkey().verify( Buffer.from(pendingTx.tx.toHash(), 'hex'), signatureInfo.witness.vkeywitnesses().get(0).ed25519_signature())){
@@ -603,10 +604,10 @@ export class Communicator {
 
         this.peers.forEach((node, index) => {
             this.transactionsBuffer.forEach((tx) => {
-                const [decodedTx , _ ] = ADAWatcher.decodeTransaction(tx.tx)
+                const [decodedTx , _ ] = ADAWatcher.decodeTransaction(tx.tx.toCBOR({canonical : true}))
 
                 if(node.state === NodeStatus.Follower && node.outgoingConnection && decodedTx.required_signers.some((signature : string) => signature === node.keyHash) && tx.status === "pending"){
-                    node.outgoingConnection.emit('signatureRequest', {type: tx.type , txId: tx.txId, signature: tx.signatures[0], tx: tx.tx.toString(), metadata: tx.metadata});
+                    node.outgoingConnection.emit('signatureRequest', {type: tx.type , txId: tx.txId, signature: tx.signatures[0], tx: tx.tx.toCBOR({canonical : true}), metadata: tx.metadata});
                 }
             });
 
