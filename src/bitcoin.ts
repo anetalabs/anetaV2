@@ -66,11 +66,12 @@ export class BitcoinWatcher{
                 await this.getUtxos()
                 coordinator.onNewBtcBlock();                
             }
-        }, 15000); // Check every 5 seconds
+        }, 5000); // Check every 5 seconds
     }
 
     getHeight = async () => {
         const height = await this.client.getBlockCount()
+        console.log("BTC height: ", height)
         return height
     }
 
@@ -296,7 +297,8 @@ export class BitcoinWatcher{
         const txb = bitcoin.Psbt.fromHex(tx, {network : bitcoin.networks[this.config.network] });
         const txc = ADAWatcher.txCompleteFromString(burnTx);
         const [txDetails, cTx] = ADAWatcher.decodeTransaction(burnTx);
-        const medatadata = JSON.parse(cTx.auxiliary_data().metadata().get(BigInt(METADATA_TAG)).to_json_value());
+        console.log(cTx.auxiliary_data().metadata().get(BigInt(METADATA_TAG)).to_json_value(), cTx.auxiliary_data().metadata().get(BigInt(METADATA_TAG)).to_json() , cTx.auxiliary_data().metadata().get(BigInt(METADATA_TAG)))
+        const medatadata = JSON.parse(cTx.auxiliary_data().metadata().get(BigInt(METADATA_TAG)).to_json());
         console.log(medatadata)
         const txString = medatadata.list.map((substring) =>  substring.string ).join("")
         let redemptionRequests =  ADAWatcher.getRedemptionRequests();
@@ -312,8 +314,9 @@ export class BitcoinWatcher{
         const burenedRequests = txDetails.inputs.map((input) => {
             return input.transaction_id + input.index;
         });
-
-        if(txDetails.outputs.length !== 1 || txDetails.outputs[0].address !== coordinator.config.adminAddress || txDetails.outputs[0].amount.multiasset !== null ) 
+        console.log(txDetails.outputs[0])
+        console.log(txDetails.outputs[0], txDetails.outputs)
+        if(txDetails.outputs.length !== 1 || txDetails.outputs[0].AlonzoFormatTxOut.address !== coordinator.config.adminAddress || Object.keys(txDetails.outputs[0].AlonzoFormatTxOut.amount.multiasset).length !== 0 ) 
             throw new Error('Invalid burn transaction Output');
         
         

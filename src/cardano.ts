@@ -124,7 +124,7 @@ export class CardanoWatcher{
                 const request = requests;
                 console.log(request)
                 const assets = {} 
-                assets[this.cBTCPolicy + this.cBtcHex] = -requests.reduce((acc, request) => acc + Number(request.assets[this.cBTCPolicy +  this.cBtcHex]) , 0);
+                assets[this.cBTCPolicy + this.cBtcHex] = -requests.reduce((acc, request) => acc + BigInt(request.assets[this.cBTCPolicy +  this.cBtcHex]), 0n);
                 
                 const spendingTx =  this.lucid.newTx().collectFrom(requests, LucidEvolution.Data.void())
                                                       .readFrom([this.configUtxo])

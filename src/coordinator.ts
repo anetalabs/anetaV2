@@ -224,9 +224,9 @@ export class Coordinator{
         try {
             const currentRedemptions = await this.getCurrentRedemption();
             const [burnTx, signature ] = (await ADAWatcher.burn(redemptionRequests, currentTransaction.toHex()))
-            const redemptionOk = BTCWatcher.checkRedemptionTx(currentTransaction.toHex(), burnTx.toString());
+            const redemptionOk = BTCWatcher.checkRedemptionTx(currentTransaction.toHex(), burnTx.toCBOR());
             if(!redemptionOk) throw new Error("Redemption transaction is not valid");
-            
+        
 
             let index = 0;
             let alternative = 0;
@@ -258,11 +258,11 @@ export class Coordinator{
                 state: redemptionState.forged,
                 currentTransaction: currentTransaction.toHex(),
                 burningTransaction: {
-                    tx : burnTx.toString(),
+                    tx : burnTx.toCBOR(),
                     txId: burnTx.toHash(),
                     signatures: [signature],
                 },
-            };
+           };
 
              
             await this.redemptionDb.findOneAndUpdate({ index : index, alternative: alternative  }, { $set: newRedemptionState }, { upsert: true });
