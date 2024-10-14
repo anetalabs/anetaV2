@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@lucid-evolution/lucid": "^0.3.48",
+    "@utxorpc/lucid-evolution-provider": "github:utxorpc/lucid-evolution-provider",
     "@utxorpc/sdk": "^0.4.0",
     "axios": "^1.6.8",
     "bip32": "^4.0.0",

@@ -2,8 +2,9 @@ import { Db } from "mongodb";
 import { toHexString, txId,  hexToString } from "./helpers.js";
 //import * as Lucid  from 'lucid-cardano'
 import * as LucidEvolution from '@lucid-evolution/lucid'
+import { U5C as UTXORpcProvider } from "@utxorpc/lucid-evolution-provider";
 
-import { CardanoSyncClient  , CardanoQueryClient} from "@utxorpc/sdk";
+import { CardanoSyncClient  , CardanoQueryClient } from "@utxorpc/sdk";
 import {MetadatumArray} from  "@utxorpc/spec/lib/utxorpc/v1alpha/cardano/cardano_pb.js";
 import {DumpHistoryResponse} from "@utxorpc/spec/lib/utxorpc/v1alpha/sync/sync_pb.js";
 import {cardanoConfig, secretsConfig, mintRequest , MintRequestSchema, RedemptionRequestSchema, utxo, redemptionRequest, protocolConfig} from "./types.js"
@@ -26,6 +27,7 @@ export class CardanoWatcher{
     private cardanoNetwork: LucidEvolution.Network;
     private configUtxo : LucidEvolution.UTxO;
     private config: cardanoConfig;
+    private UintArrayAddress : Uint8Array;
     private redemptionRequests: redemptionRequest[] = [];   
     private rejectionQueue: {txHash: string, index: number , targetAddress : string , completed: Date | undefined , created: Date}[] = [];
     private confescationQueue: {txHash: string, index: number ,  completed: Date | undefined , created: Date}[] = [];
@@ -44,7 +46,7 @@ export class CardanoWatcher{
 
         (async () => {
          
-           this.lucid = await LucidEvolution.Lucid(new LucidEvolution.Blockfrost(config.lucid.provider.host, config.lucid.provider.projectId), (config.network.charAt(0).toUpperCase() + config.network.slice(1)) as LucidEvolution.Network);
+           this.lucid = await this.newLucidInstance ();
            this.lucid.selectWallet.fromSeed(secrets.seed);
            this.cBTCPolicy = LucidEvolution.mintingPolicyToId(this.mintingScript);
            console.log("Minting PolicyId:", this.cBTCPolicy);
@@ -52,6 +54,7 @@ export class CardanoWatcher{
            console.log(prorocolConfig.adminToken);
            this.configUtxo = await this.lucid.config().provider.getUtxoByUnit(prorocolConfig.adminToken);
            this.address =  LucidEvolution.credentialToAddress(this.cardanoNetwork ,{type: "Script", hash: this.cBTCPolicy});
+           this.UintArrayAddress = LucidEvolution.CML.Address.from_bech32(this.address).to_raw_bytes();
            this.myKeyHash = LucidEvolution.getAddressDetails(await this.lucid.wallet().address()).paymentCredential.hash;
            console.log("Address", this.address);
            console.log("Local Address", await this.lucid.wallet().address());    
@@ -64,7 +67,8 @@ export class CardanoWatcher{
     async newLucidInstance (){
         const network = (this.config.network.charAt(0).toUpperCase() + this.config.network.slice(1)) as LucidEvolution.Network;
         console.log(" Lucid Network", network);
-       return await LucidEvolution.Lucid(new LucidEvolution.Blockfrost(this.config.lucid.provider.host, this.config.lucid.provider.projectId), network);
+       // return await LucidEvolution.Lucid(new LucidEvolution.Blockfrost(this.config.lucid.provider.host, this.config.lucid.provider.projectId), network);
+        return await LucidEvolution.Lucid(new UTXORpcProvider({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers}), network);
     }
 
     getDbName() : string{
@@ -80,10 +84,11 @@ export class CardanoWatcher{
     async submitTransaction(tx: LucidEvolution.TxSigned){
         //this.lucid.provider.submitTx(tx.toString());
         console.log("Submitting: ", tx.toJSON());
+        
         try{
-            await this.lucid.config().provider.submitTx(tx.toCBOR());
+            await axios.post( this.config.lucid.provider.host +"/tx/submit", Buffer.from(tx.toCBOR(), 'hex'), {headers: {"project_id": this.config.lucid.provider.projectId, "Content-Type": "application/cbor"}})   
+           // await this.lucid.config().provider.submitTx(tx.toCBOR());
            // await this.lucid.provider.submitTx(tx.toString());
-//            await axios.post( this.config.lucid.provider.host +"/tx/submit", Buffer.from(tx.toString(), 'hex'), {headers: {"project_id": this.config.lucid.provider.projectId, "Content-Type": "application/cbor"}})   
         }catch(e){
             console.log(e);
         }
@@ -440,11 +445,11 @@ export class CardanoWatcher{
 
     async getTip(){
         try{
-         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers:  this.config.utxoRpc.headers} );
          
-        let tip = await axios.get(`${this.config.lucid.provider.host}/blocks/latest`, {headers: {"project_id": this.config.lucid.provider.projectId}});
-        return tip;
+            let tip = await this.mongo.collection("height").findOne({type: "top"});
+            return tip;
         }catch(e){
+            return null;
         }
     }
 
@@ -603,8 +608,6 @@ export class CardanoWatcher{
 
     async startIndexer() {
         let tip = await this.mongo.collection("height").findOne({type: "top"});
-        let liveTip = await this.getTip();  
-        console.log(liveTip.data)
 
         console.log("tip" , tip);
         let tipPoint = undefined ;   
@@ -622,10 +625,12 @@ export class CardanoWatcher{
             
             switch (block.action) { 
                 case "apply":
-                    if(block.block.header.height >= liveTip.data.height){
-                        this.syncing = false;
+                    if(this.syncing === true ){
+                        const currentSlot = LucidEvolution.unixTimeToSlot(this.cardanoNetwork, new Date().getTime()) ;
+                        if(currentSlot <= Number(block.block.header.slot) + 20){
+                            this.syncing = false;
+                        }
                     }
-    
                     await this.handleNewBlock(block.block);
                     break;
                 case "undo":
@@ -655,7 +660,7 @@ export class CardanoWatcher{
               return false;
         }
        const tip = await this.getTip();
-       const confirmations = tip.data.height - match.height;
+       const confirmations = tip.height - match.height;
        return  confirmations>=  coordinator.config.finality.cardano;
     }
 
@@ -690,7 +695,7 @@ export class CardanoWatcher{
         const tx = await this.mongo.collection("burn").findOne({ redemptionTx: redemptionTx});
         const tip = await this.getTip();
         if(!tx) return false;
-        const confirmations = tip.data.height - tx.height;
+        const confirmations = tip.height - tx.height;
         return  confirmations>=  coordinator.config.finality.cardano;
     }
 
@@ -715,7 +720,7 @@ export class CardanoWatcher{
         console.log("Burn", tx);
         const tip = await this.getTip();
         if(!tx) return false; 
-        const confirmations = tip.data.height - tx.height;
+        const confirmations = tip.height - tx.height;
         return  confirmations >= coordinator.config.finality.cardano;
     }
 
@@ -727,7 +732,7 @@ export class CardanoWatcher{
         const tx = await this.mongo.collection("burn").findOne({ redemptionTx});
         const tip = await this.getTip();
         if(!tx) return false;
-        const confirmations = tip.data.height - tx.height;
+        const confirmations = tip.height - tx.height;
         if(confirmations>= coordinator.config.finality.cardano){
             return tx;
         }else{
@@ -787,12 +792,33 @@ export class CardanoWatcher{
     }
 
     async registerNewBlock(block){
+        function areUint8ArraysEqual(a: Uint8Array, b: Uint8Array): boolean {
+            if (a.length !== b.length) {
+                return false;
+            }
+            for (let i = 0; i < a.length; i++) {
+                if (a[i] !== b[i]) {
+                    return false;
+                }
+            }
+            return true;
+          }
+
         await Promise.all(block.body.tx.map(async (tx) => {
             // find all mints of cBTC
-            
+            if(tx.outputs.some((output) => areUint8ArraysEqual(output.address, this.UintArrayAddress))){
+                  console.log("Found a incoming request", block.header.height, tx.hash);
+                  const txHash = Buffer.from(tx.hash).toString('hex');
+                  const addressRawAddress = LucidEvolution.CML.Address.from_raw_bytes(tx.inputs[0].address);
+                  let sender = addressRawAddress.to_bech32( this.cardanoNetwork === "Mainnet" ? "addr" : "addr_test");
+                  
+                  this.mongo.collection("incoming").insertOne({tx: tx , txHash,  block: Buffer.from(block.header.hash).toString("hex"), height: block.header.height, sender});
+                    
+                  console.log("TxHash", txHash);
+                  // incoming request
+              } 
             if(tx.mint.some((multiasset) => toHexString(multiasset.policyId) === this.cBTCPolicy)){
                 console.log("Minting Transaction", tx, tx.mint);
-
                 const multiasset = tx.mint.find((multiasset) => toHexString(multiasset.policyId) === this.cBTCPolicy);
                 console.log("Multiasset", multiasset.assets[0].mintCoin);  
                 const asset = multiasset.assets[0]; // assuming each Multiasset has exactly one Asset
