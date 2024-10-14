@@ -787,8 +787,13 @@ export class CardanoWatcher{
     }
 
     async getUtxoSender(hash : string, index: number){
-        const data = await axios.get(`${this.config.lucid.provider.host}/txs/${hash}/utxos`, {headers: {"project_id": this.config.lucid.provider.projectId}});
-        return  data.data.inputs[0].address;
+        let data = await this.mongo.collection("incoming").findOne({txHash: hash});
+        while(!data){
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            data = await this.mongo.collection("incoming").findOne({txHash: hash});
+        }
+        return data.sender;
+
     }
 
     async registerNewBlock(block){
@@ -806,10 +811,11 @@ export class CardanoWatcher{
 
         await Promise.all(block.body.tx.map(async (tx) => {
             // find all mints of cBTC
+            console.log(this.UintArrayAddress ,tx.outputs[0].address)
             if(tx.outputs.some((output) => areUint8ArraysEqual(output.address, this.UintArrayAddress))){
                   console.log("Found a incoming request", block.header.height, tx.hash);
                   const txHash = Buffer.from(tx.hash).toString('hex');
-                  const addressRawAddress = LucidEvolution.CML.Address.from_raw_bytes(tx.inputs[0].address);
+                  const addressRawAddress = LucidEvolution.CML.Address.from_raw_bytes(tx.inputs[0].asOutput.address);
                   let sender = addressRawAddress.to_bech32( this.cardanoNetwork === "Mainnet" ? "addr" : "addr_test");
                   
                   this.mongo.collection("incoming").insertOne({tx: tx , txHash,  block: Buffer.from(block.header.hash).toString("hex"), height: block.header.height, sender});
