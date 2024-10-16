@@ -14,8 +14,6 @@ export  type bitcoinConfig =
         "timeout": number
     },
     "falbackFeeRate" : number,
-    "BTCadminAddress": string,
-    "BTCPrivKey": string,
     "network": string
 }
 

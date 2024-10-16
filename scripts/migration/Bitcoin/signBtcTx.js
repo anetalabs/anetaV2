@@ -14,8 +14,8 @@ const args  = minimist(process.argv.slice(2));
 
 const readFile = util.promisify(fs.readFile);
 
-const bitcoinConfig = JSON.parse((await readFile(args.bitcoinConfig || '../config/bitcoinConfig.json')).toString());
-const secrets = JSON.parse((await readFile(args.secrets || '../config/secrets.json')).toString());
+const bitcoinConfig = JSON.parse((await readFile(args.bitcoinConfig || '../../../config/bitcoinConfig.json')).toString());
+const secrets = JSON.parse((await readFile(args.secrets || '../../../config/secrets.json')).toString());
 
 async function signTx(txHex){
     const txb = bitcoin.Psbt.fromHex(txHex, {network : bitcoin.networks[bitcoinConfig.network] });

@@ -2,12 +2,21 @@ use aiken/crypto.{ VerificationKeyHash}
 use aiken/collection/list
 use cardano/assets.{ PolicyId , AssetName , quantity_of }
 use cardano/script_context.{ ScriptContext }
-use cardano/transaction.{InlineDatum}
+use cardano/transaction.{InlineDatum , Transaction}
 use aiken/option
 
-type MultisigDescriptor {
+pub type MultisigDescriptor {
   signers: List<VerificationKeyHash>,
   m: Int
+}
+
+validator configHost{
+    spend(datum: Option<MultisigDescriptor>, _redeemer, _utxo, transaction: Transaction) {
+        when datum is  {
+          Some(adminData) -> list.count(adminData.signers, fn(signer) { list.has(transaction.extra_signatories, signer )}) == adminData.m
+          None -> fail
+        }
+    }
 }
 
 validator multisig{

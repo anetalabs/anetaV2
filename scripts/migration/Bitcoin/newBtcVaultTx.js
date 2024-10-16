@@ -12,8 +12,8 @@ const args  = minimist(process.argv.slice(2));
 
 const readFile = util.promisify(fs.readFile);
 
-const topology = JSON.parse((await readFile(args.topology || '../config/topology.json')).toString());
-const bitcoinConfig = JSON.parse((await readFile(args.bitcoinConfig || '../config/bitcoinConfig.json')).toString());
+const topology = JSON.parse((await readFile(args.topology || '../../../config/topology.json')).toString());
+const bitcoinConfig = JSON.parse((await readFile(args.bitcoinConfig || '../../../config/bitcoinConfig.json')).toString());
 
 const client = new BitcoinCore(bitcoinConfig.bitcoinRPC);
 
