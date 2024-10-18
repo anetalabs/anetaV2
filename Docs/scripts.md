@@ -20,6 +20,11 @@ cd scripts
 node .\seedToAngelListing.js "creek ... soul"
 ```
 
+All the following commands should be run from the `scripts/migration/Bitcoin` folder.
+```bash
+cd scripts/migration/Bitcoin
+```
+
 ### To create a BTC transaction from the vault: 
 
 ```bash
@@ -45,4 +50,24 @@ node .\signBtcTx.js --txHex <HexEncodedTxString>
 ```bash
 node .\combineAndSubmit.js  --txHex  <HexEncodedTxString1>  --txHex  <|HexEncodedTxString2>  --txHex  <|HexEncodedTxString3> 
 ```
+
+All the following commands should be run from the `scripts/migration/Cardano` folder.
+```bash
+cd scripts/migration/Cardano
+```
+
+### To create a new Cardano transaction that updates the guardian angel set:
+
+```bash
+node .\createConfigChangeTx.js --signers <[HexEncodedKey1, HexEncodedKey2, ...]> --newMembers  <[HexEncodedKey1, HexEncodedKey2, ...]> --newM  <Number> 
+```
+
+### To inspect a Cardano transaction:
+
+```bash
+node .\inspectTx.js --txHex <HexEncodedTxString>
+```
+
+### To sign a Cardano transaction:
+
 

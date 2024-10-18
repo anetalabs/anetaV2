@@ -811,7 +811,6 @@ export class CardanoWatcher{
 
         await Promise.all(block.body.tx.map(async (tx) => {
             // find all mints of cBTC
-            console.log(this.UintArrayAddress ,tx.outputs[0].address)
             if(tx.outputs.some((output) => areUint8ArraysEqual(output.address, this.UintArrayAddress))){
                   console.log("Found a incoming request", block.header.height, tx.hash);
                   const txHash = Buffer.from(tx.hash).toString('hex');

@@ -46,6 +46,7 @@ async function completeAndSubmit(txb) {
     const tx = txb.extractTransaction();
     const txHex = tx.toHex();
     return await client.sendRawTransaction(txHex);
+  
 }
 
 async function main() {

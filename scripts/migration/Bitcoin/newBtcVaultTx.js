@@ -93,6 +93,8 @@ async function craftTransaction(utxos)  {
         if (total === 0) throw new Error('No UTXOs to redeem');
         const feerate =  await client.estimateSmartFee(100)
         const fee = Math.round( 100_000 * feerate.feerate  * txSize ) ; //round to 8 decimal places
+        console.log("Fee: ", fee);
+        console.log("Total: ", total);
         if (args.amount){
             const amount = Math.round(args.amount * 100000000);
             txb.addOutput({ address: args.targetAddress, value: amount });

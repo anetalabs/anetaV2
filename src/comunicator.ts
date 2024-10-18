@@ -153,7 +153,6 @@ export class Communicator {
                 newLeader = i;
                 this.peers[i].state = NodeStatus.Candidate;
                 this.peers[this.Iam].votedFor = i;
-
                 break;
             }
         }
