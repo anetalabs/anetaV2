@@ -4,14 +4,6 @@
         "mongo": {
             "connectionString": "mongodb://mongo:27017"
         },
-        "lucid":{
-            "provider": {
-                "type": "blockfrost",
-                "host": "https://cardano-preprod.blockfrost.io/api/v0",
-                "projectId": "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2"
-
-            }
-        },
 	 "utxoRpc": {
             "host": "http://dolos:50051",
             "headers":  {}
