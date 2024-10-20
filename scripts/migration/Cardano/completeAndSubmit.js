@@ -19,10 +19,10 @@ async function main(){
     const signedTx = LucidEvolution.makeTxSignBuilder(lucid.config(), LucidEvolution.CML.Transaction.from_cbor_hex(tx));
     lucid.selectWallet.fromAddress("addr_test1qrlmv3gjf253v49u8v5psxzwtlf6uljc5xf3a24ehfzcyz32ptyyevm796lgrkz2t5vrx3snmmsfh0ntc333mqf6eagstyc95m", []);
     const completeTx = await signedTx.assemble(signatures).complete()
-    const txSubmit = await axios.post( config.lucid.provider.host +"/tx/submit", Buffer.from(completeTx.toCBOR(), 'hex'), {headers: {"project_id": config.lucid.provider.projectId, "Content-Type": "application/cbor"}})   
+//    const txSubmit = await axios.post( config.lucid.provider.host +"/tx/submit", Buffer.from(completeTx.toCBOR(), 'hex'), {headers: {"project_id": config.lucid.provider.projectId, "Content-Type": "application/cbor"}})   
+//const txSubmit = await lucid.config().provider.submitTx(completeTx.toCBOR());
+    await completeTx.submit();
     console.log("Tx was submitted");
-    //const txSubmit = await lucid.config().provider.submitTx(completeTx.toCBOR());
-   // console.log(txSubmit);
     //console.log(signatures);
 }
 

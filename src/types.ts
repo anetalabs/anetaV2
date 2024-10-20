@@ -86,13 +86,6 @@ export type cardanoConfig = {
     mongo: {
       connectionString: string
     }
-    lucid: {
-      provider: {
-        type: string
-        host: string
-        projectId: string
-      }
-    }
     utxoRpc: {
       host: string
       headers: Record<string, string>
