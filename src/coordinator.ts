@@ -291,7 +291,7 @@ export class Coordinator{
 
     async onNewCardanoBlock(){
         console.log("New Cardano Block event");
-      if(BTCWatcher.inSync() === false) return;
+      if(BTCWatcher.inSync() === false || ADAWatcher.inSync() === false) return;
       await this.getOpenRequests(); 
       await this.checkTimeout(); 
       await this.checkBurn(); 
@@ -300,6 +300,7 @@ export class Coordinator{
     }
 
     async onNewBtcBlock(){
+        if (BTCWatcher.inSync() === false || ADAWatcher.inSync() === false) return;
         console.log("New BTC Block event");       
         this.checkPayments() 
         this.checkRedemption();

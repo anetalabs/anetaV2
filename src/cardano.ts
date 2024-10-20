@@ -86,8 +86,9 @@ export class CardanoWatcher{
         console.log("Submitting: ", tx.toJSON());
         
         try{
-            await axios.post( this.config.lucid.provider.host +"/tx/submit", Buffer.from(tx.toCBOR(), 'hex'), {headers: {"project_id": this.config.lucid.provider.projectId, "Content-Type": "application/cbor"}})   
-           // await this.lucid.config().provider.submitTx(tx.toCBOR());
+            //await axios.post( this.config.lucid.provider.host +"/tx/submit", Buffer.from(tx.toCBOR(), 'hex'), {headers: {"project_id": this.config.lucid.provider.projectId, "Content-Type": "application/cbor"}})   
+             //await this.lucid.config().provider.submitTx(tx.toCBOR());
+             await tx.submit();
            // await this.lucid.provider.submitTx(tx.toString());
         }catch(e){
             console.log(e);

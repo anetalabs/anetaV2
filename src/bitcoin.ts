@@ -10,6 +10,7 @@ import { utxo } from "./types.js";
 import  {METADATA_TAG} from "./cardano.js";
 import { ADAWatcher, communicator, coordinator } from "./index.js";
 
+
 const ECPair =  ECPairFactory(ecc);
 export const utxoEventEmitter = new EventEmitter();
 
@@ -92,7 +93,8 @@ export class BitcoinWatcher{
         }
         
         await this.getUtxos();
-        
+        console.log("BTC Node is synced")
+        console.log("this.utxos", this.utxos)
         this.isSynced = true;
         coordinator.onNewBtcBlock();
         this.startListener()
@@ -632,7 +634,7 @@ export class BitcoinWatcher{
     }
     
     getFee = async () => {  
-        const fee = await this.client.estimateSmartFee(100)
+        const fee = await this.client.estimateSmartFee(100, "ECONOMICAL")
         if(fee.feerate && fee.feerate > coordinator.config.maxBtcFeeRate) throw new Error(`Fee rate over limit ${fee.feerate} > ${coordinator.config.maxBtcFeeRate}`);
         return fee.feerate ? fee.feerate : this.config.falbackFeeRate;
     }
