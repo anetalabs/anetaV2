@@ -72,7 +72,6 @@ export class BitcoinWatcher{
 
     getHeight = async () => {
         const height = await this.client.getBlockCount()
-        console.log("BTC height: ", height)
         return height
     }
 
@@ -632,9 +631,15 @@ export class BitcoinWatcher{
     refundIndex = (index: number) => {
 
     }
+
+    queryFee = async () : Promise<number> => {
+        const fee = await this.client.estimateSmartFee(10)
+        if(fee.feerate && fee.feerate > coordinator.config.maxBtcFeeRate) throw new Error(`Fee rate over limit ${fee.feerate} > ${coordinator.config.maxBtcFeeRate}`);
+        return fee.feerate ? fee.feerate : this.config.falbackFeeRate;
+    }
     
-    getFee = async () => {  
-        const fee = await this.client.estimateSmartFee(100, "ECONOMICAL")
+    getFee = async () : Promise<number> => {  
+        const fee = await this.client.estimateSmartFee(10)
         if(fee.feerate && fee.feerate > coordinator.config.maxBtcFeeRate) throw new Error(`Fee rate over limit ${fee.feerate} > ${coordinator.config.maxBtcFeeRate}`);
         return fee.feerate ? fee.feerate : this.config.falbackFeeRate;
     }

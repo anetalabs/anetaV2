@@ -67,7 +67,6 @@ export class CardanoWatcher{
     async newLucidInstance (){
         const network = (this.config.network.charAt(0).toUpperCase() + this.config.network.slice(1)) as LucidEvolution.Network;
         console.log(" Lucid Network", network);
-       // return await LucidEvolution.Lucid(new LucidEvolution.Blockfrost(this.config.lucid.provider.host, this.config.lucid.provider.projectId), network);
         return await LucidEvolution.Lucid(new UTXORpcProvider({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers}), network);
     }
 
@@ -88,7 +87,7 @@ export class CardanoWatcher{
         try{
             //await axios.post( this.config.lucid.provider.host +"/tx/submit", Buffer.from(tx.toCBOR(), 'hex'), {headers: {"project_id": this.config.lucid.provider.projectId, "Content-Type": "application/cbor"}})   
              //await this.lucid.config().provider.submitTx(tx.toCBOR());
-             await tx.submit();
+     await tx.submit();
            // await this.lucid.provider.submitTx(tx.toString());
         }catch(e){
             console.log(e);

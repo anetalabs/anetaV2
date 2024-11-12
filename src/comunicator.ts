@@ -7,6 +7,7 @@ import  Client  from 'socket.io-client';
 import * as LucidEvolution from '@lucid-evolution/lucid';
 
 import { CardanoWatcher } from './cardano.js';
+import { BitcoinWatcher } from './bitcoin.js';
 const HEARTBEAT = 5000;
 const ELECTION_TIMEOUT = 5;
 
@@ -471,6 +472,30 @@ export class Communicator {
             
         });
 
+        socket.on("feePoll", async (data) => {
+            //if not leader, ignore
+            if(this.peers[index].state !== NodeStatus.Leader) return;
+            console.log("Fee poll received", data);
+            if(BTCWatcher.inSync() ){
+                const fee = await BTCWatcher.queryFee();
+                const time = new Date().getTime();
+                const feeData = {fee: fee, time: time};
+                const signature = await this.lucid.wallet().signMessage(this.peers[this.Iam].address, this.stringToHex(JSON.stringify(feeData)));
+                this.peers[index].outgoingConnection.emit("feeResponse", {feeData,  signature});
+            }
+        });
+
+        socket.on('feeResponse', async (data) => {
+            console.log("Fee response received", data);
+            if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
+            const feeData = JSON.parse(data.vote);
+            const signature = data.signature;
+            // check if signature is valid
+            const addressHex =  LucidEvolution.CML.Address.from_bech32(this.peers[index].address).to_hex()  //this.stringToHex(response.address);
+            const verified = LucidEvolution.verifyData(addressHex , this.peers[index].keyHash ,this.stringToHex(JSON.stringify(feeData)), signature);
+            
+        });
+
         socket.on('btcSignatureRequest', async (tx: { tx : string , type: string  }) => {
             // if not leader, ignore
             if(this.peers[index].state !== NodeStatus.Leader || this.peers[this.Iam].state !== NodeStatus.Follower) return;
@@ -639,6 +664,10 @@ export class Communicator {
         console.log('Applying punitive measures');
         if (peer.incomingConnection) peer.incomingConnection.disconnect();
         if (peer.outgoingConnection) peer.outgoingConnection.disconnect();
+    }
+
+    public async getFees() : Promise<number> {
+        return 0.000001;
     }
 
     
