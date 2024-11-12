@@ -414,6 +414,11 @@ export class CardanoWatcher{
 
             const assets : LucidEvolution.Assets = {} 
             assets[this.cBTCPolicy + "63425443"] = datum.amount;
+            const network = (this.config.network.charAt(0).toUpperCase() + this.config.network.slice(1)) as LucidEvolution.Network;
+            console.log(" Lucid Network", network);
+           // return await LucidEvolution.Lucid(new LucidEvolution.Blockfrost(this.config.lucid.provider.host, this.config.lucid.provider.projectId), network);
+            const localLucid = await LucidEvolution.Lucid(new UTXORpcProvider({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers}), network);
+            localLucid.selectWallet.fromAddress(await this.lucid.wallet().address(),await this.lucid.config().provider.getUtxos(await this.lucid.wallet().address()))
             const spendingTx =  this.lucid.newTx().attach.Script(this.mintingScript)
                                                   .collectFrom([request], LucidEvolution.Data.void())
                                                   .readFrom([this.configUtxo])
@@ -436,7 +441,7 @@ export class CardanoWatcher{
             }catch(e){
                 console.log(e);
         }}else{
-            this.mintQueue.push({txHash, index , targetAddress: await this.getUtxoSender(txHash, index), completed : undefined, created: new Date()} );                
+            this.mintQueue.push({txHash, index , targetAddress: await this.getUtxoSender(txHash, index), completed : undefined, created: new Date()});                
         }
     }
 
