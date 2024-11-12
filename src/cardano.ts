@@ -419,7 +419,7 @@ export class CardanoWatcher{
            // return await LucidEvolution.Lucid(new LucidEvolution.Blockfrost(this.config.lucid.provider.host, this.config.lucid.provider.projectId), network);
             const localLucid = await LucidEvolution.Lucid(new UTXORpcProvider({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers}), network);
             localLucid.selectWallet.fromAddress(await this.lucid.wallet().address(),await this.lucid.config().provider.getUtxos(await this.lucid.wallet().address()))
-            const spendingTx =  this.lucid.newTx().attach.Script(this.mintingScript)
+            const spendingTx =  localLucid.newTx().attach.Script(this.mintingScript)
                                                   .collectFrom([request], LucidEvolution.Data.void())
                                                   .readFrom([this.configUtxo])
                                                   .mintAssets(assets, LucidEvolution.Data.void())
