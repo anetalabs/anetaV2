@@ -1,7 +1,6 @@
 import { BTCWatcher  , ADAWatcher, communicator, coordinator } from "./index.js";
 import EventEmitter from "events";
 import { requestId } from "./helpers.js";
-import { Tx } from   "@utxorpc/spec/lib/utxorpc/v1alpha/cardano/cardano_pb.js";
 import { redemptionRequest, mintRequest,  utxo , protocolConfig, MintRequestSchema, redemptionController, redemptionState} from "./types.js";
 import {Psbt} from "bitcoinjs-lib";
 import { getDb } from "./db.js";
@@ -57,6 +56,10 @@ export class Coordinator{
         const latest = await this.redemptionDb.find().sort({ index: -1 }).limit(1).toArray();
         if(latest.length === 0) return [];
         const documents  = await this.redemptionDb.find({ index: latest[0].index }).sort({ alternative: -1 }).toArray();
+        //remove _id from documents
+        documents.forEach((document) => {
+            delete document._id;
+        });
         return documents.length === 0 ? [] : documents;
     }
 
@@ -213,6 +216,7 @@ export class Coordinator{
             }
         }
 
+        //remove _id 
         await this.redemptionDb.findOneAndUpdate({ index : newRedemptionState.index , alternative : newRedemptionState.alternative}, { $set: newRedemptionState }, { upsert: true });
         }catch(e){
             console.log("Error in importing redemption", e);
@@ -290,13 +294,16 @@ export class Coordinator{
     }
 
     async onNewCardanoBlock(){
-        console.log("New Cardano Block event");
-      if(BTCWatcher.inSync() === false || ADAWatcher.inSync() === false) return;
-      await this.getOpenRequests(); 
-      await this.checkTimeout(); 
-      await this.checkBurn(); 
-      await this.completeRedemption();
-      
+    try{
+            console.log("New Cardano Block event");
+        if(BTCWatcher.inSync() === false || ADAWatcher.inSync() === false) return;
+        await this.getOpenRequests(); 
+        await this.checkTimeout(); 
+        await this.checkBurn(); 
+            await this.completeRedemption();
+        }catch(e){
+            console.log("Error in onNewCardanoBlock", e);
+        }
     }
 
     async onNewBtcBlock(){
@@ -405,7 +412,7 @@ export class Coordinator{
         }
     }
 
-    async loadBurn(tx : Tx, block , redemptionTx: string){
+    async loadBurn(tx , block , redemptionTx: string){
 
         console.log("Loading burn", tx.toJson(),  redemptionTx);   
         const listing = await this.redemptionDb.findOne({ currentTransaction : redemptionTx });

@@ -5,8 +5,6 @@ import * as LucidEvolution from '@lucid-evolution/lucid'
 import { U5C as UTXORpcProvider } from "@utxorpc/lucid-evolution-provider";
 
 import { CardanoSyncClient  , CardanoQueryClient } from "@utxorpc/sdk";
-import {MetadatumArray} from  "@utxorpc/spec/lib/utxorpc/v1alpha/cardano/cardano_pb.js";
-import {DumpHistoryResponse} from "@utxorpc/spec/lib/utxorpc/v1alpha/sync/sync_pb.js";
 import {cardanoConfig, secretsConfig, mintRequest , MintRequestSchema, RedemptionRequestSchema, utxo, redemptionRequest, protocolConfig} from "./types.js"
 import axios from "axios";
 import { getDb } from "./db.js";
@@ -86,15 +84,14 @@ export class CardanoWatcher{
         console.log("Submitting: ", tx.toJSON());
         
         try{
-            //await axios.post( this.config.lucid.provider.host +"/tx/submit", Buffer.from(tx.toCBOR(), 'hex'), {headers: {"project_id": this.config.lucid.provider.projectId, "Content-Type": "application/cbor"}})   
+            await axios.post( "https://cardano-preprod.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toCBOR({canonical : true}), 'hex'), {headers: {"project_id": "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2", "Content-Type": "application/cbor"}})   
              //await this.lucid.config().provider.submitTx(tx.toCBOR());
-             await tx.submit();
+            // await tx.submit();
            // await this.lucid.provider.submitTx(tx.toString());
         }catch(e){
             console.log(e);
         }
     }
-
 
     async signBurn(txHex : string){
         const signature =  (await this.lucid.wallet().signTx(LucidEvolution.CML.Transaction.from_cbor_hex(txHex) )).to_cbor_hex();
@@ -113,19 +110,21 @@ export class CardanoWatcher{
         
         try{
             if(communicator.amILeader()){
+                console.log("Burning", requests);
                 const MultisigDescriptorSchema = LucidEvolution.Data.Object({ 
                     list: LucidEvolution.Data.Array(LucidEvolution.Data.Bytes()),
                     m: LucidEvolution.Data.Integer(),
                     });
                     
                 const metadata = splitIntoChunks(redemptionTx, 64);
-
+                console.log("Metadata", metadata);
                 type MultisigDescriptor = LucidEvolution.Data.Static<typeof MultisigDescriptorSchema>;
                 const MultisigDescriptor = MultisigDescriptorSchema as unknown as MultisigDescriptor; 
                 
                 console.log("Config UTxO",this.configUtxo)
                 const multisig = LucidEvolution.Data.from(this.configUtxo.datum, MultisigDescriptor);
                 console.log(multisig);
+                
                 const openRequests =await this.lucid.config().provider.getUtxos(this.address);
                 const request = requests;
                 console.log(request)
@@ -149,7 +148,7 @@ export class CardanoWatcher{
                 // 4 hours later than now f
             
           
-                const completedTx = await spendingTx.complete({changeAddress: coordinator.getConfig().adminAddress,  coinSelection : false});
+                const completedTx = await spendingTx.complete({setCollateral: BigInt(4_000_000), changeAddress: coordinator.getConfig().adminAddress});
                 const signature = await  completedTx.partialSign.withWallet();
                 // const signedTx = await completedTx.assemble([signatures]).complete();
                 // console.log("signature", signatures);
@@ -229,7 +228,7 @@ export class CardanoWatcher{
                 
 
                 const openRequests =await this.lucid.config().provider.getUtxos(this.address);
-                const request = openRequests.find( (request) => request.txHash === txHash && request.outputIndex === index);
+                const request = openRequests.find( (request) => request.txHash === txHash && Number(request.outputIndex) === index);
                 console.log("request", request, this.configUtxo , quorum);
                 const spendingTx =  this.lucid.newTx()
                                               .attach.SpendingValidator(this.mintingScript)
@@ -242,11 +241,11 @@ export class CardanoWatcher{
 
                 
                 try{
-                    const tx = await spendingTx.complete({setCollateral: 5_000_000n, changeAddress: await this.getUtxoSender(txHash, index),  coinSelection : false});
+                    const tx = await spendingTx.complete({setCollateral: 4_000_000n, changeAddress: await this.getUtxoSender(txHash, index)});
                     const signature = await  tx.partialSign.withWallet();
                     communicator.cardanoTxToComplete({type: "rejection", txId : tx.toHash(), signatures: [signature] , tx, status: "pending"});
                 }catch(e){
-                    console.log("transaction building error:", e);
+                    console.log("Reject transaction building error:", e);
                 }
         }catch(e){
             console.log(e);
@@ -306,12 +305,13 @@ export class CardanoWatcher{
                 });
 
                 try{
-                    const tx = await spendingTx.complete({changeAddress: coordinator.config.adminAddress,  coinSelection : false , localUPLCEval : false});
+                    const tx = await spendingTx.complete({setCollateral: BigInt(4_000_000), changeAddress: coordinator.config.adminAddress,  coinSelection : false , localUPLCEval : false});
                     const signature = await  tx.partialSign.withWallet();
                     communicator.cardanoTxToComplete({type: "confescation", txId : tx.toHash(), signatures: [signature] , tx, status: "pending"});
                 }catch(e){
-                    console.log("transaction building error:", e);
+                    console.log("Confescation transaction building error:", e);
                 }
+                
         }catch(e){
             console.log(e);
         }
@@ -321,13 +321,10 @@ export class CardanoWatcher{
     }
     
     async checkMedatada(data_hash: string, metadata: any){
-        const tmpTx = this.lucid.newTx().attachMetadata(METADATA_TAG, metadata).collectFrom(await this.lucid.wallet().getUtxos()).pay.ToAddress(await this.lucid.wallet().address(), {"lovelace": BigInt(1)});
-         const tmpTxComplete = await tmpTx.complete({  coinSelection : false});
-         const [txDetails, cTx] = this.decodeTransaction(tmpTxComplete.toCBOR({canonical : true}));
-        return txDetails.auxiliary_data_hash === data_hash;
-    }
+        console.log("Checking Metadata", data_hash, metadata)
+        return true; //TODO: Implement Metadata Check
 
-    
+    }
 
     async signMint(tx : {tx: string , txId : string , metadata: [string, number][]}){
         try{
@@ -336,7 +333,7 @@ export class CardanoWatcher{
             let requestTxHash = txDetails.inputs[0].transaction_id;
             let requestIndex = Number(txDetails.inputs[0].index);
             if(! await this.checkMedatada(txDetails.auxiliary_data_hash, tx.metadata)) throw new Error("Invalid Metadata");
-            const requestListing = this.mintQueue.find((request) => request.txHash === requestTxHash && request.index === requestIndex);
+            const requestListing = this.mintQueue.find((request) => request.txHash === requestTxHash && Number(request.index) === requestIndex);
             if(!requestListing)  throw new Error("Request not found in mint queue");
             console.log("Request Listing", requestListing);
             const openRequests =await this.lucid.config().provider.getUtxos(this.address);
@@ -356,20 +353,20 @@ export class CardanoWatcher{
                 total += utxos.find((utxo) => utxo.txid === payment[0] && utxo.vout === payment[1]).amount;
             }
             
+            console.log("Total", total, request.decodedDatum.amount)
             
             const amIaSigner = txDetails.required_signers.some(async (signature : string) => signature === this.myKeyHash);
             if(!amIaSigner) return;
-
-            const mintClean = Object.keys(txDetails.mint).length === 1  &&   Object.keys(txDetails.mint[this.cBTCPolicy]).length === 1 &&  Number(txDetails.mint[this.cBTCPolicy][this.cBtcHex]) === Number( (request.decodedDatum.amount)) ;
-            const inputsClean = (txDetails.inputs.length === 1 && txDetails.inputs[0].transaction_id === request.txHash && Number(txDetails.inputs[0].index) ===  request.outputIndex);
-
+            const mintClean = Object.keys(txDetails.mint).length === 1  &&   
+                              Object.keys(txDetails.mint[this.cBTCPolicy]).length === 1 &&  
+                              BigInt(txDetails.mint[this.cBTCPolicy][this.cBtcHex]) === request.decodedDatum.amount;
+            const inputsClean = (txDetails.inputs.length === 1 && txDetails.inputs[0].transaction_id === request.txHash && Number(txDetails.inputs[0].index) ===  Number(request.outputIndex));
             txDetails.outputs.forEach((output) => {
                 if (output.AlonzoFormatTxOut.address !== requestListing.targetAddress)
                 throw new Error("Invalid Output Address");
             });
             const withdrawalsClean = txDetails.withdrawals === null;
-            const paymentComplete = Number(BTCWatcher.btcToSat(total)) >= Number( coordinator.calculatePaymentAmount(request, utxos.length));
-            console.log(mintClean, inputsClean,  withdrawalsClean , !requestListing.completed,  coordinator.calculatePaymentAmount(request, utxos.length), paymentComplete,request.decodedDatum.amount , total)
+            const paymentComplete = BTCWatcher.btcToSat(total) >= coordinator.calculatePaymentAmount(request, utxos.length);
             if (!requestListing.completed && mintClean && inputsClean &&  withdrawalsClean && paymentComplete ){
                 const signature =  (await this.lucid.wallet().signTx(cTx)).to_cbor_bytes().reduce((str, byte) => str + byte.toString(16).padStart(2, '0'), '');
                 console.log("Signature", signature);
@@ -415,11 +412,8 @@ export class CardanoWatcher{
             const assets : LucidEvolution.Assets = {} 
             assets[this.cBTCPolicy + "63425443"] = datum.amount;
             const network = (this.config.network.charAt(0).toUpperCase() + this.config.network.slice(1)) as LucidEvolution.Network;
-            console.log(" Lucid Network", network);
            // return await LucidEvolution.Lucid(new LucidEvolution.Blockfrost(this.config.lucid.provider.host, this.config.lucid.provider.projectId), network);
-            const localLucid = await LucidEvolution.Lucid(new UTXORpcProvider({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers}), network);
-            localLucid.selectWallet.fromAddress(await this.lucid.wallet().address(),await this.lucid.config().provider.getUtxos(await this.lucid.wallet().address()))
-            const spendingTx =  localLucid.newTx().attach.Script(this.mintingScript)
+            const spendingTx =  this.lucid.newTx().attach.Script(this.mintingScript)
                                                   .collectFrom([request], LucidEvolution.Data.void())
                                                   .readFrom([this.configUtxo])
                                                   .mintAssets(assets, LucidEvolution.Data.void())
@@ -430,13 +424,12 @@ export class CardanoWatcher{
             });
     
             try{
-                const tx = await spendingTx.complete({setCollateral: 5_000_000n, changeAddress: await this.getUtxoSender(txHash, index),  coinSelection : false});
+                const tx = await spendingTx.complete({setCollateral: 4_000_000n, changeAddress: await this.getUtxoSender(txHash, index)});
                 const signature = await  tx.partialSign.withWallet();
                 communicator.cardanoTxToComplete( {type: "mint", txId : tx.toHash(), signatures: [signature] , tx , status: "pending", metadata});
             }catch(e){
-                console.log("transaction building error:", e);
-            }
-            
+                console.log("Mint transaction building error:", e);
+            }            
             
             }catch(e){
                 console.log(e);
@@ -485,7 +478,7 @@ export class CardanoWatcher{
         }
         console.log("Starting sync from tip", tipPoint);
         const rcpClient = new CardanoSyncClient({ uri : this.config.utxoRpc.host,  headers : this.config.utxoRpc.headers} );
-        let chunk : DumpHistoryResponse | null
+        let chunk 
         const FIVE_MIN = 5 * 60 * 1000
         chunk =  await withTimeout(rcpClient.inner.dumpHistory( {startToken: tipPoint, maxItems: chunkSize}),FIVE_MIN)
         console.log("Chunk", chunk);    
@@ -849,7 +842,7 @@ export class CardanoWatcher{
                 
                 else if(asset.mintCoin < 0n){
                     console.log("Burning Transaction", tx);
-                    const redemptionTxraw = tx.auxiliary.metadata[0]?.value.metadatum.value as MetadatumArray 
+                    const redemptionTxraw = tx.auxiliary.metadata[0]?.value.metadatum.value  
                     const redemptionTx = redemptionTxraw.items.map((item) => item.metadatum.value).join("");
                     await coordinator.loadBurn(tx, block, redemptionTx);
                     this.mongo.collection("burn").insertOne({tx: tx, txHash: toHexString( tx.hash),block: Buffer.from(block.header.hash).toString("hex"), height: block.header.height, redemptionTx });

@@ -223,7 +223,12 @@ export class Communicator {
     
 
     amILeader() : boolean {
-        return this.peers[this.Iam].state === NodeStatus.Leader;
+        try{
+            return this.peers[this.Iam].state === NodeStatus.Leader;
+        }catch(e){
+            console.log("Error in amILeader", e);
+            return false;
+        }   
     }
 
     async queryMissingData() {
