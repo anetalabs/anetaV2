@@ -94,7 +94,6 @@ export class BitcoinWatcher{
         
         await this.getUtxos();
         console.log("BTC Node is synced")
-        console.log("this.utxos", this.utxos)
         this.isSynced = true;
         coordinator.onNewBtcBlock();
         this.startListener()

@@ -240,7 +240,6 @@ export class Communicator {
        });
     }
 
-
     cardanoTxToComplete(data: pendingCardanoTransaction) {
         if(this.peers[this.Iam].state === NodeStatus.Leader  && !this.transactionsBuffer.find((tx) => tx.txId === data.txId) ){
             const tx = data
@@ -248,7 +247,6 @@ export class Communicator {
            this.transactionsBuffer.push(tx);
            console.log('Transaction to complete:', data);
        }
-
     }
 
     bitcoinTxToComplete(tx: pendingBitcoinTransaction) {
@@ -456,6 +454,7 @@ export class Communicator {
             // if not leader, ignore
             try{
             if(this.peers[index].state !== NodeStatus.Leader || this.peers[this.Iam].state !== NodeStatus.Follower) return;
+                console.log("Signature request received", data);
                 switch (data.type) {
                     case "rejection":
                         await ADAWatcher.signReject(data);
@@ -541,7 +540,6 @@ export class Communicator {
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
             coordinator.newRedemptionSignature(data.sig);
         });
-
 
         socket.on('signatureResponse',async (data) => {
             // if not leader, ignore
@@ -681,9 +679,12 @@ export class Communicator {
         });
 
         socket.on('authenticationAccepted', () => {
-
-            console.log('Authentication accepted');
-            this.peers[i].outgoingConnection.emit("statusUpdate", this.peers[this.Iam].state);
+            try{
+                console.log('Authentication accepted');
+                this.peers[i].outgoingConnection.emit("statusUpdate", this.peers[this.Iam].state);
+            }catch(err){
+                console.log("Error sending status update", err);
+            }
         });
 
     }

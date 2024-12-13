@@ -29,7 +29,7 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "@lucid-evolution/lucid": "^0.4.2",
+    "@lucid-evolution/lucid": "0.4.13",
     "@utxorpc/lucid-evolution-provider": "^0.1.1",
     "@utxorpc/sdk": "^0.4.0",
     "axios": "^1.6.8",
