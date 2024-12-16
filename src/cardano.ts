@@ -577,7 +577,7 @@ export class CardanoWatcher{
                     const decodedRequest = request as redemptionRequest; // Cast decodedRequest to the correct type
                     try{    
                         decodedRequest["decodedDatum"] = this.decodeRedemptionDatum(request.datum)
-                        // if no token is being redeemed, reject the request
+                        decodedRequest["decodedDatum"].destinationAddress = hexToString(decodedRequest["decodedDatum"].destinationAddress);
                         if(!decodedRequest.assets[this.cBTCPolicy +  this.cBtcHex] ){
                             this.rejectRequest(request.txHash, request.outputIndex);
                             return;
@@ -685,7 +685,7 @@ export class CardanoWatcher{
     }
 
     decodeRedemptionDatum(datum: string){
-        return LucidEvolution.Data.from(datum, RedemptionRequestSchema).destinationAddress;
+        return LucidEvolution.Data.from(datum, RedemptionRequestSchema);
     }
     
     txCompleteFromString(txComplete : string): LucidEvolution.TxSignBuilder {
