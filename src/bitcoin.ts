@@ -10,7 +10,6 @@ import { utxo } from "./types.js";
 import  {METADATA_TAG} from "./cardano.js";
 import { ADAWatcher, communicator, coordinator } from "./index.js";
 
-
 const ECPair =  ECPairFactory(ecc);
 export const utxoEventEmitter = new EventEmitter();
 
@@ -45,14 +44,13 @@ export class BitcoinWatcher{
         this.watcherSync()
         const seed = bip39.mnemonicToSeedSync(secrets.seed);
         const bip32 = BIP32Factory(ecc);
+        
         this.root = bip32.fromSeed(seed);
         const path = "m/44'/0'/0'/0/0"; // This is the BIP44 path for the first address in the first account of a Bitcoin wallet
         const node = this.root.derivePath(path);
 
         this.watcherKey = ECPair.fromPrivateKey(Buffer.from(node.privateKey.toString('hex'),'hex'), { network: bitcoin.networks[config.network] })
-
     }
-
 
     startListener = async () => {
         let lastHeight = await this.getHeight();
@@ -232,7 +230,7 @@ export class BitcoinWatcher{
             
             requests.forEach((request) => {
                 const amount =  coordinator.calculateRedemptionAmount(request);
-                txb.addOutput({address: request.decodedDatum , value: amount });
+                txb.addOutput({address: request.decodedDatum.destinationAddress , value: amount });
                 amountToSend += amount;
             });
 
@@ -347,11 +345,10 @@ export class BitcoinWatcher{
                 if(input.witnessScript.toString('hex') !== ValidRedemptionScript) throw new Error('Invalid redemption transaction Input');
         });
 
-        
         txb.txOutputs.forEach((output) => {
             if(output.address !== this.getVaultAddress())
             {                   
-                const request = [...requestMap.values()].find((request) => (request.decodedDatum === output.address) && ( coordinator.calculateRedemptionAmount(request) === output.value));
+                const request = [...requestMap.values()].find((request) => (request.decodedDatum.destinationAddress === output.address) && ( coordinator.calculateRedemptionAmount(request) === output.value));
                 if(request === undefined) throw new Error('Invalid redemption transaction Output(not found)');    
                 
                 if( output.value !== coordinator.calculateRedemptionAmount(request)) throw new Error('Invalid redemption transaction Output(wrong amount) ');
@@ -366,6 +363,7 @@ export class BitcoinWatcher{
 
         return true;
     }
+
 
     checkTransaction(tx: bitcoin.Psbt){
         const txb = tx;
@@ -395,7 +393,7 @@ export class BitcoinWatcher{
         const tx = txb2.extractTransaction();
         return tx.getId();
     }
-
+    
 
     txEqual = (tx1: string, tx2: string) => {
         const txb1 = bitcoin.Psbt.fromHex(tx1, {network : bitcoin.networks[this.config.network] });

@@ -62,12 +62,11 @@ export class CardanoWatcher{
         console.log("cardano watcher")
     }
 
-
     async newLucidInstance (){
         const network = (this.config.network.charAt(0).toUpperCase() + this.config.network.slice(1)) as LucidEvolution.Network;
         console.log("Lucid Network", network);
-        //const provider = new LucidEvolution.Blockfrost("https://cardano-preprod.blockfrost.io/api/v0", "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2");
-        const provider = new UTXORpcProvider({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers});
+        const provider = new LucidEvolution.Blockfrost("https://cardano-preprod.blockfrost.io/api/v0", "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2");
+        //const provider = new UTXORpcProvider({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers});
         return await LucidEvolution.Lucid(provider, network);
         //return await LucidEvolution.Lucid(new UTXORpcProvider({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers}), network);
     }
@@ -87,15 +86,14 @@ export class CardanoWatcher{
         console.log("Submitting: ", tx.toJSON());
         
         try{
-            //await axios.post( "https://cardano-preprod.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toCBOR({canonical : true}), 'hex'), {headers: {"project_id": "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2", "Content-Type": "application/cbor"}})   
-            await this.lucid.config().provider.submitTx(tx.toCBOR());
+            await axios.post( "https://cardano-preprod.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toCBOR({canonical : true}), 'hex'), {headers: {"project_id": "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2", "Content-Type": "application/cbor"}})   
+            //await this.lucid.config().provider.submitTx(tx.toCBOR());
             // await tx.submit();
            // await this.lucid.provider.submitTx(tx.toString());
         }catch(e){
             console.log(e);
         }
     }
-
     async signBurn(txHex : string){
         const signature =  (await this.lucid.wallet().signTx(LucidEvolution.CML.Transaction.from_cbor_hex(txHex) )).to_cbor_hex();
         console.log("Signature", signature);
@@ -210,6 +208,7 @@ export class CardanoWatcher{
         const withdrawalsClean = txDetails.withdrawals === null;
         const allInputsMine = txDetails.inputs.every( (input) => input.transaction_id === requestTxHash && Number(input.index) === requestIndex);
         
+
         console.log(mintClean, inputsClean, outputsClean, withdrawalsClean , txDetails, !requestListing.completed, allInputsMine)
         if (requestListing && mintClean && inputsClean && outputsClean && withdrawalsClean && allInputsMine){
             const signature =  (await this.lucid.wallet().signTx(cTx)).to_cbor_bytes().reduce((str, byte) => str + byte.toString(16).padStart(2, '0'), '');
@@ -427,9 +426,11 @@ export class CardanoWatcher{
             });
     
             try{
+                console.log("completing mint");
                 const tx = await spendingTx.complete({setCollateral: 4_000_000n, changeAddress: await this.getUtxoSender(txHash, index)});
                 const signature = await  tx.partialSign.withWallet();
                 communicator.cardanoTxToComplete( {type: "mint", txId : tx.toHash(), signatures: [signature] , tx , status: "pending", metadata});
+                console.log("Mint Complete");
             }catch(e){
                 console.log("Mint transaction building error:", e);
             }            
@@ -441,6 +442,7 @@ export class CardanoWatcher{
         }
     }
 
+    
     getMyKeyHash(): [string, string]{
         return [ LucidEvolution.credentialToAddress( this.cardanoNetwork,{type: "Key", hash: this.myKeyHash}), this.myKeyHash];
     }
@@ -581,7 +583,7 @@ export class CardanoWatcher{
                             return;
                         }
                         
-                        if(!BTCWatcher.isAddressValid(decodedRequest.decodedDatum))
+                        if(!BTCWatcher.isAddressValid(decodedRequest.decodedDatum.destinationAddress))
                         {
                             this.rejectRequest(request.txHash, request.outputIndex);
                             return;
@@ -683,7 +685,7 @@ export class CardanoWatcher{
     }
 
     decodeRedemptionDatum(datum: string){
-        return hexToString(LucidEvolution.Data.from(datum, RedemptionRequestSchema).destinationAddress);
+        return LucidEvolution.Data.from(datum, RedemptionRequestSchema).destinationAddress;
     }
     
     txCompleteFromString(txComplete : string): LucidEvolution.TxSignBuilder {
@@ -814,7 +816,7 @@ export class CardanoWatcher{
         await Promise.all(block.body.tx.map(async (tx) => {
             // find all mints of cBTC
             if(tx.outputs.some((output) => areUint8ArraysEqual(output.address, this.UintArrayAddress))){
-                  console.log("Found a incoming request", block.header.height, tx.hash);
+                  console.log("Found an incoming request", block.header.height, tx.hash);
                   const txHash = Buffer.from(tx.hash).toString('hex');
                   const addressRawAddress = LucidEvolution.CML.Address.from_raw_bytes(tx.inputs[0].asOutput.address);
                   let sender = addressRawAddress.to_bech32( this.cardanoNetwork === "Mainnet" ? "addr" : "addr_test");
@@ -823,7 +825,8 @@ export class CardanoWatcher{
                     
                   console.log("TxHash", txHash);
                   // incoming request
-              } 
+            } 
+
             if(tx.mint.some((multiasset) => toHexString(multiasset.policyId) === this.cBTCPolicy)){
                 console.log("Minting Transaction", tx, tx.mint);
                 const multiasset = tx.mint.find((multiasset) => toHexString(multiasset.policyId) === this.cBTCPolicy);

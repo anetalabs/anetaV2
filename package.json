@@ -29,13 +29,13 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "@lucid-evolution/lucid": "0.4.13",
-    "@utxorpc/lucid-evolution-provider": "^0.1.1",
+    "@lucid-evolution/lucid": "^0.4.15",
+    "@utxorpc/lucid-evolution-provider": "^0.1.2",
     "@utxorpc/sdk": "^0.4.0",
     "axios": "^1.6.8",
     "bip32": "^4.0.0",
     "bip39": "^3.1.0",
-    "bitcoin-core": "^4.1.0",
+    "bitcoin-core": "^4.2.0",
     "bitcoinjs-lib": "^6.1.5",
     "blakejs": "^1.2.1",
     "ecpair": "^2.1.0",

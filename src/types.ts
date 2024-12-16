@@ -114,14 +114,14 @@ export const RedemptionRequestSchema = LucidEvolution.Data.Object({
   destinationAddress: LucidEvolution.Data.Bytes()
 });
 
-export interface mintRequest extends LucidEvolution.UTxO{ 
+export interface mintRequest extends LucidEvolution.UTxO{
   decodedDatum:  typeof MintRequestSchema
+  
 }
 
 export interface redemptionRequest extends LucidEvolution.UTxO{
-  decodedDatum: string
+  decodedDatum:  typeof RedemptionRequestSchema
 }
-
 
 export type utxo = {
   txid: string,
