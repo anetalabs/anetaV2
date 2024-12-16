@@ -11,7 +11,7 @@ RUN npm install
 RUN npm run build
 
 # Use a lightweight Node.js runtime as the base image for the final Docker image
-FROM node:16
+FROM node:22
 
 # Set the working directory in the container
 WORKDIR /app
