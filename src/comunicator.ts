@@ -47,7 +47,7 @@ interface BtcSignatureRequestData {
 }
 
 class InputValidator {
-    static readonly MAX_STRING_LENGTH = 1000; // Adjust based on your needs
+    static readonly MAX_STRING_LENGTH = 10000; // Adjust based on your needs
     static readonly VALID_NODE_STATES = [NodeStatus.Leader, NodeStatus.Follower, NodeStatus.Learner, NodeStatus.Monitor, NodeStatus.Candidate, NodeStatus.Disconnected];
 
     static isValidString(str: unknown): boolean {
@@ -63,7 +63,6 @@ class InputValidator {
         const voteData = data as { vote: string; signature: LucidEvolution.SignedMessage };
         
         if (!this.isValidString(voteData.vote) || !this.isValidSignedMessage(voteData.signature)) {
-            console.log("Invalid vote data", voteData);
             return false;
         }
 
