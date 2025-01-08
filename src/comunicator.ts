@@ -47,9 +47,33 @@ interface BtcSignatureRequestData {
 }
 
 class InputValidator {
-    static readonly MAX_STRING_LENGTH = 10000; // Adjust based on your needs
     static readonly VALID_NODE_STATES = [NodeStatus.Leader, NodeStatus.Follower, NodeStatus.Learner, NodeStatus.Monitor, NodeStatus.Candidate, NodeStatus.Disconnected];
+    static readonly MAX_STRING_LENGTH = 10000; // Adjust based on your needs
+    
+    static isValidUpdateRedemptionToComplete(data: {tx : string}) {
+        if(!data || typeof data !== 'object') return false;
+        const reqData = data as {tx : string};
+        if(!this.isValidString(reqData.tx)) return false;
 
+        return true;
+    }
+    
+    static isValidRedemption(data: redemptionController) {
+        if(!data || typeof data !== 'object') return false;
+        const reqData = data as redemptionController;
+        if(!this.isValidString(reqData.currentTransaction)) return false;
+        if(!this.isValidString(reqData.burningTransaction.tx)) return false;
+        if(!this.isValidString(reqData.burningTransaction.txId)) return false;
+        if(!Array.isArray(reqData.burningTransaction.signatures)) return false;
+        return true;
+    }
+
+    static isValidBtcSignatureResponse(data: any) {
+        if (!data || typeof data !== 'object') return false;
+        const reqData = data as BtcSignatureRequestData;
+        return reqData.type === 'consolidation' && this.isValidString(reqData.tx);
+    }
+    
     static isValidString(str: unknown): boolean {
         return typeof str === 'string' && str.length > 0 && str.length < this.MAX_STRING_LENGTH;
     }
@@ -593,6 +617,12 @@ export class Communicator {
 
             // if not leader, ignore
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
+
+            if (!InputValidator.isValidBtcSignatureResponse(data)) {
+                console.log('Invalid BTC signature response received');
+                return;
+            }
+
             this.btcTransactionsBuffer.forEach((tx) => {
                 try{
                         tx.tx = BTCWatcher.combine(tx.tx,data)
@@ -612,15 +642,23 @@ export class Communicator {
             });
         });
 
-        socket.on("updateRedemptionToComplete", async (data) => {
+        socket.on("updateRedemptionToComplete", async (data : {tx : string}) => {
+            if (!InputValidator.isValidUpdateRedemptionToComplete(data)) {
+                console.log('Invalid update redemption to complete data');
+                return;
+            }
             console.log("Redemption to complete received", data);
             if(this.peers[index].state !== NodeStatus.Leader) return;
             coordinator.updateRedemptionToComplete(data);
         });
 
-        socket.on('burnSignature' , async (signature) => {
+        socket.on('burnSignature' , async (signature : string) => {
             // if not leader, ignore
             try{
+                if (!InputValidator.isValidString(signature)) {
+                    console.log('Invalid burn signature data');
+                    return;
+                }
             console.log("Burn signature received", signature, "from", this.peers[index].id)
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
             
@@ -630,7 +668,12 @@ export class Communicator {
             }
         });
 
-        socket.on('newRedemSignature', async (data) => {
+        socket.on('newRedemSignature', async (data : {sig : string}) => {
+            if (!InputValidator.isValidString(data.sig)) {
+                console.log('Invalid new redemption signature data');
+                return;
+            }
+
             console.log("Redemption signature received", data, "from")
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
             coordinator.newRedemptionSignature(data.sig);
@@ -638,8 +681,15 @@ export class Communicator {
 
         socket.on('signatureResponse',async (data) => {
             // if not leader, ignore
+            if (!InputValidator.isValidBtcSignatureResponse(data)) {
+                console.log('Invalid signature response data');
+                return;
+            }
+
+
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
             console.log("Signature response received", data);
+            
             const pendingTx = this.transactionsBuffer.find((tx) => tx.txId === data.txId);
             const signatureInfo = ADAWatcher.decodeSignature(data.signature);
             if (!signatureInfo.witness.vkeywitnesses().get(0).vkey().verify( Buffer.from(pendingTx.tx.toHash(), 'hex'), signatureInfo.witness.vkeywitnesses().get(0).ed25519_signature())){
@@ -656,6 +706,10 @@ export class Communicator {
         });
 
         socket.on('newRedemption', async (data: redemptionController ) => {
+            if (!InputValidator.isValidRedemption(data)) {
+                console.log('Invalid new redemption data');
+                return;
+            }
             // if peer is not leader, ignore
             console.log("New redemption received", data);
             if(this.peers[index].state !== NodeStatus.Leader ) return;
@@ -664,8 +718,12 @@ export class Communicator {
         });
 
 
-        socket.on('updateRequest', async (data) => {
+        socket.on('updateRequest', async (data : string) => {
             // if not leader, ignore
+            if (!InputValidator.isValidString(data)) {
+                console.log('Invalid update request data');
+                return;
+            }
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
                 
             const foundData = await  coordinator.getRedemptionState(data);
@@ -675,15 +733,17 @@ export class Communicator {
 
         });
 
-        socket.on('updateResponse', async (data) => {
+        socket.on('updateResponse', async (data : redemptionController) => {
             // if message is not from leader, ignore
             if(this.peers[this.Iam].state !== NodeStatus.Follower) return;
+            if (!InputValidator.isValidRedemption(data)) {
+                console.log('Invalid update response data');
+                return;
+            }
             coordinator.completeFoundRedemption(data);
         });
         
-        socket.on('data', (data) => {
-            console.log('Received data:', data.toString() , 'from', socket.handshake.address);
-        });
+
  
         socket.on('disconnect', () => {
             console.log('Client disconnected');
