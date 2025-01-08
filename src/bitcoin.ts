@@ -70,7 +70,6 @@ export class BitcoinWatcher{
 
     getHeight = async () => {
         const height = await this.client.getBlockCount()
-        console.log("BTC height: ", height)
         return height
     }
 

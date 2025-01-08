@@ -2,7 +2,7 @@ import { Db } from "mongodb";
 import { toHexString, txId,  hexToString } from "./helpers.js";
 //import * as Lucid  from 'lucid-cardano'
 import * as LucidEvolution from '@lucid-evolution/lucid'
-import { U5C as UTXORpcProvider } from "@utxorpc/lucid-evolution-provider";
+import { U5C, U5C as UTXORpcProvider } from "@utxorpc/lucid-evolution-provider/lib/index.js";
 
 import { CardanoSyncClient  , CardanoQueryClient } from "@utxorpc/sdk";
 import {cardanoConfig, secretsConfig, mintRequest , MintRequestSchema, RedemptionRequestSchema, utxo, redemptionRequest, protocolConfig} from "./types.js"
@@ -65,12 +65,22 @@ export class CardanoWatcher{
     async newLucidInstance (){
         const network = (this.config.network.charAt(0).toUpperCase() + this.config.network.slice(1)) as LucidEvolution.Network;
         console.log("Lucid Network", network);
-        const provider = new LucidEvolution.Blockfrost("https://cardano-preprod.blockfrost.io/api/v0", "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2");
-        //const provider = new UTXORpcProvider({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers});
-        return await LucidEvolution.Lucid(provider, network);
+        //const provider = new LucidEvolution.Blockfrost("https://cardano-preprod.blockfrost.io/api/v0", "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2");
+        const provider = new U5C({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers});
+        const params = await provider.getProtocolParameters();
+        const cleanParams = Object.fromEntries(
+            Object.entries(params).map(([key, value]) => [
+                key, 
+                typeof value === 'bigint' ? Number(value) : value
+            ])
+        );
+
+        console.log("Params", JSON.stringify( cleanParams , null, 2));
+         return await LucidEvolution.Lucid(provider, network);
         //return await LucidEvolution.Lucid(new UTXORpcProvider({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers}), network);
     }
 
+    
     getDbName() : string{
       return  this.config.DbName;
     }
@@ -87,13 +97,14 @@ export class CardanoWatcher{
         
         try{
             await axios.post( "https://cardano-preprod.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toCBOR({canonical : true}), 'hex'), {headers: {"project_id": "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2", "Content-Type": "application/cbor"}})   
-            //await this.lucid.config().provider.submitTx(tx.toCBOR());
+           // await this.lucid.config().provider.submitTx(tx.toCBOR());
             // await tx.submit();
            // await this.lucid.provider.submitTx(tx.toString());
         }catch(e){
             console.log(e);
         }
     }
+
     async signBurn(txHex : string){
         const signature =  (await this.lucid.wallet().signTx(LucidEvolution.CML.Transaction.from_cbor_hex(txHex) )).to_cbor_hex();
         console.log("Signature", signature);
@@ -243,7 +254,7 @@ export class CardanoWatcher{
 
                 
                 try{
-                    const tx = await spendingTx.complete({setCollateral: 4_000_000n, changeAddress: await this.getUtxoSender(txHash, index)});
+                    const tx = await spendingTx.complete({ setCollateral: 4_000_000n, changeAddress: await this.getUtxoSender(txHash, index),  canonical: true});
                     const signature = await  tx.partialSign.withWallet();
                     communicator.cardanoTxToComplete({type: "rejection", txId : tx.toHash(), signatures: [signature] , tx, status: "pending"});
                 }catch(e){
@@ -270,9 +281,9 @@ export class CardanoWatcher{
         if(!amIaSigner) throw new Error("Not a signer for this request");
         const mintClean = txDetails.mint === null;
         const inputsClean = (txDetails.inputs.length === 1 && txDetails.inputs[0].transaction_id === requestTxHash && Number(txDetails.inputs[0].index) === requestIndex); 
-        const outputsClean = txDetails.outputs.length === 1 && txDetails.outputs[0].address === coordinator.config.adminAddress ;
+        const outputsClean = txDetails.outputs.length === 1 && txDetails.outputs[0].AlonzoFormatTxOut.address === coordinator.config.adminAddress ;
         const withdrawalsClean = txDetails.withdrawals === null;
-        
+        console.log("confescation", txDetails.outputs[0], coordinator.config.adminAddress)
         console.log(mintClean, inputsClean, outputsClean, withdrawalsClean , txDetails, !requestListing.completed)
         if (requestListing && mintClean && inputsClean && outputsClean && withdrawalsClean){
             const signature =  (await this.lucid.wallet().signTx(cTx)).to_cbor_bytes().reduce((str, byte) => str + byte.toString(16).padStart(2, '0'), '');
@@ -307,7 +318,7 @@ export class CardanoWatcher{
                 });
 
                 try{
-                    const tx = await spendingTx.complete({setCollateral: BigInt(4_000_000), changeAddress: coordinator.config.adminAddress,  coinSelection : false , localUPLCEval : false});
+                    const tx = await spendingTx.complete({setCollateral: BigInt(4_000_000), changeAddress: coordinator.config.adminAddress});
                     const signature = await  tx.partialSign.withWallet();
                     communicator.cardanoTxToComplete({type: "confescation", txId : tx.toHash(), signatures: [signature] , tx, status: "pending"});
                 }catch(e){
@@ -858,3 +869,4 @@ export class CardanoWatcher{
         }));
     }
 }
+

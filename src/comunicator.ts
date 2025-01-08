@@ -199,7 +199,6 @@ export class Communicator {
        
             const leader = this.peers[this.getLeader()];
             if(leader && leader.outgoingConnection){
-                console.log('Sending signature response:', data);
                 leader.outgoingConnection.emit('signatureResponse', data);
             }
             
@@ -454,7 +453,6 @@ export class Communicator {
             // if not leader, ignore
             try{
             if(this.peers[index].state !== NodeStatus.Leader || this.peers[this.Iam].state !== NodeStatus.Follower) return;
-                console.log("Signature request received", data);
                 switch (data.type) {
                     case "rejection":
                         await ADAWatcher.signReject(data);
