@@ -394,18 +394,15 @@ export class Communicator {
 
     private handShake(socket: ServerSocket) : void{
         function generateRandomHex(size: number): string {
-            let result = '';
-            const characters = '0123456789abcdef';
-            const charactersLength = characters.length;
-            for (let i = 0; i < size; i++) {
-              result += characters.charAt(Math.floor(Math.random() * charactersLength));
-            }
-            return result;
-          }
-         const challenge = "challenge" + generateRandomHex(64);
-         console.log("Starting handshake")
-         socket.emit('challenge', challenge);
-         socket.on('challengeResponse', async (response) => {
+            const bytes = crypto.getRandomValues(new Uint8Array(size));
+            return Array.from(bytes)
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+        }
+        const challenge = "challenge" + generateRandomHex(64);
+        console.log("Starting handshake")
+        socket.emit('challenge', challenge);
+        socket.on('challengeResponse', async (response) => {
             console.log("Challenge response received")
             const addressHex =  LucidEvolution.CML.Address.from_bech32(response.address).to_hex()  //this.stringToHex(response.address);
             console.log("challenge response address", response, response.address);
