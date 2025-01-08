@@ -50,6 +50,13 @@ class InputValidator {
     static readonly VALID_NODE_STATES = [NodeStatus.Leader, NodeStatus.Follower, NodeStatus.Learner, NodeStatus.Monitor, NodeStatus.Candidate, NodeStatus.Disconnected];
     static readonly MAX_STRING_LENGTH = 10000; // Adjust based on your needs
     
+    static isValidSignatureResponse(data: { txId: string; signature: string; }) {
+        if(!data || typeof data !== 'object') return false;
+        const reqData = data as {txId: string, signature: string};
+        if(!this.isValidString(reqData.txId)) return false;
+        if(!this.isValidString(reqData.signature)) return false;
+        return true;
+    }
     static isValidUpdateRedemptionToComplete(data: {tx : string}) {
         if(!data || typeof data !== 'object') return false;
         const reqData = data as {tx : string};
@@ -68,11 +75,7 @@ class InputValidator {
         return true;
     }
 
-    static isValidBtcSignatureResponse(data: any) {
-        if (!data || typeof data !== 'object') return false;
-        const reqData = data as BtcSignatureRequestData;
-        return reqData.type === 'consolidation' && this.isValidString(reqData.tx);
-    }
+
     
     static isValidString(str: unknown): boolean {
         return typeof str === 'string' && str.length > 0 && str.length < this.MAX_STRING_LENGTH;
@@ -511,7 +514,7 @@ export class Communicator {
 
         });
 
-        socket.on('vote', (vote) => {   
+        socket.on('vote', (vote : {vote : string, signature : string}) => {   
             try {
                 if (!InputValidator.isValidVote(vote)) {
                     console.log('Invalid vote data received');
@@ -550,7 +553,7 @@ export class Communicator {
             this.peers[index].outgoingConnection.emit('newRedemption', redemption[0]);
         });
 
-        socket.on('signatureRequest', async (data) => {
+        socket.on('signatureRequest', async (data : {type : string, txId: string, signature: string, tx: string, metadata: string}) => {
             try {
                 if (!InputValidator.isValidSignatureRequest(data)) {
                     console.log('Invalid signature request data');
@@ -591,7 +594,7 @@ export class Communicator {
             }
         });
 
-        socket.on('btcSignatureRequest', async (data) => {
+        socket.on('btcSignatureRequest', async (data : {type : string, tx : string}) => {
             try {
                 if (!InputValidator.isValidBtcSignatureRequest(data)) {
                     console.log('Invalid BTC signature request data');
@@ -613,12 +616,12 @@ export class Communicator {
             }
         });
 
-        socket.on('btcSignatureResponse', async (data) => {
+        socket.on('btcSignatureResponse', async (data : string ) => {
 
             // if not leader, ignore
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
 
-            if (!InputValidator.isValidBtcSignatureResponse(data)) {
+            if (!InputValidator.isValidString(data)) {
                 console.log('Invalid BTC signature response received');
                 return;
             }
@@ -679,9 +682,9 @@ export class Communicator {
             coordinator.newRedemptionSignature(data.sig);
         });
 
-        socket.on('signatureResponse',async (data) => {
+        socket.on('signatureResponse',async (data : {txId: string, signature: string}) => {
             // if not leader, ignore
-            if (!InputValidator.isValidBtcSignatureResponse(data)) {
+            if (!InputValidator.isValidSignatureResponse(data)) {
                 console.log('Invalid signature response data');
                 return;
             }
@@ -717,7 +720,7 @@ export class Communicator {
             
         });
 
-
+``
         socket.on('updateRequest', async (data : string) => {
             // if not leader, ignore
             if (!InputValidator.isValidString(data)) {
@@ -826,7 +829,11 @@ export class Communicator {
         });
 
 
-        socket.on('challenge', async (challenge) => {
+        socket.on('challenge', async (challenge : string) => {
+            if (!InputValidator.isValidString(challenge)) {
+                console.log('Invalid challenge data');
+                return;
+            }
             console.log("Challenge received", challenge);
             const message : Object= await this.lucid.wallet().signMessage(this.address, this.stringToHex(challenge));
             message["address"] = this.address;
