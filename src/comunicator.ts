@@ -506,12 +506,15 @@ export class Communicator {
 
 
         socket.on('statusUpdate', (status) => {
-            if(status === NodeStatus.Leader){
-                console.log('illigal status update from:', this.peers[index].id, 'to leader, ignoring...');
-               // this.applyPunitveMeasures(socket);
+            if (!this.validateStateTransition(this.peers[index].state, status)) {
+                console.log('Invalid state transition attempted:', {
+                    from: this.peers[index].state,
+                    to: status,
+                    peer: this.peers[index].id
+                });
+                return;
             }
             this.peers[index].state = status;
-
         });
 
         socket.on('vote', (vote : {vote : string, signature : string}) => {   
@@ -804,50 +807,59 @@ export class Communicator {
 
     
     private async connect(i: number) {
-        const peerPort = this.peers[i].port;
-        const socket = Client(`http://${this.peers[i].ip}:${peerPort}`);
-        this.peers[i].outgoingConnection = socket;
-
-        socket.on('disconnect', () => {
-            console.log('Disconnected from server');
-            this.peers[i].outgoingConnection = null;
-            this.peers[i].state = NodeStatus.Disconnected;
-        });
-
-        socket.on('connect_error', (error) => {
-            socket.disconnect();
-            this.peers[i].outgoingConnection = null;
-
-        });
-
-        socket.on('connect_timeout', () => {
-            console.log('Connection Timeout');
-            
-            socket.disconnect();
-            this.peers[i].outgoingConnection = null;
-
-        });
+        if (this.peers[i].outgoingConnection) {
+            console.log('Connection already exists');
+            return;
+        }
+        const reconnectDelay =  30000;
 
 
-        socket.on('challenge', async (challenge : string) => {
-            if (!InputValidator.isValidString(challenge)) {
-                console.log('Invalid challenge data');
-                return;
-            }
-            console.log("Challenge received", challenge);
-            const message : Object= await this.lucid.wallet().signMessage(this.address, this.stringToHex(challenge));
-            message["address"] = this.address;
-            socket.emit('challengeResponse', message);
-        });
+        setTimeout(() => {
+            const peerPort = this.peers[i].port;
+            const socket = Client(`http://${this.peers[i].ip}:${peerPort}`);
+            this.peers[i].outgoingConnection = socket;
 
-        socket.on('authenticationAccepted', () => {
-            try{
-                console.log('Authentication accepted');
-                this.peers[i].outgoingConnection.emit("statusUpdate", this.peers[this.Iam].state);
-            }catch(err){
-                console.log("Error sending status update", err);
-            }
-        });
+            socket.on('disconnect', () => {
+                console.log('Disconnected from server');
+                this.peers[i].outgoingConnection = null;
+                this.peers[i].state = NodeStatus.Disconnected;
+            });
+
+            socket.on('connect_error', (error) => {
+                socket.disconnect();
+                this.peers[i].outgoingConnection = null;
+
+            });
+
+            socket.on('connect_timeout', () => {
+                console.log('Connection Timeout');
+                
+                socket.disconnect();
+                this.peers[i].outgoingConnection = null;
+
+            });
+
+
+            socket.on('challenge', async (challenge : string) => {
+                if (!InputValidator.isValidString(challenge)) {
+                    console.log('Invalid challenge data');
+                    return;
+                }
+                console.log("Challenge received", challenge);
+                const message : Object= await this.lucid.wallet().signMessage(this.address, this.stringToHex(challenge));
+                message["address"] = this.address;
+                socket.emit('challengeResponse', message);
+            });
+
+            socket.on('authenticationAccepted', () => {
+                try{
+                    console.log('Authentication accepted');
+                    this.peers[i].outgoingConnection.emit("statusUpdate", this.peers[this.Iam].state);
+                }catch(err){
+                    console.log("Error sending status update", err);
+                }
+            });
+        }, reconnectDelay);
 
     }
 
@@ -875,4 +887,18 @@ export class Communicator {
             console.log("Error sending to leader", err);
         }
     }
+
+    private validateStateTransition(currentState: NodeStatus, newState: NodeStatus): boolean {
+        const validTransitions = {
+            [NodeStatus.Disconnected]: [NodeStatus.Learner],
+            [NodeStatus.Learner]: [NodeStatus.Follower, NodeStatus.Candidate],
+            [NodeStatus.Follower]: [NodeStatus.Candidate, NodeStatus.Disconnected],
+            [NodeStatus.Candidate]: [NodeStatus.Leader, NodeStatus.Follower, NodeStatus.Disconnected],
+            [NodeStatus.Leader]: [NodeStatus.Follower, NodeStatus.Disconnected],
+            [NodeStatus.Monitor]: [NodeStatus.Follower, NodeStatus.Disconnected]
+        };
+    
+        return validTransitions[currentState]?.includes(newState) || false;
+    }
+    
 }
