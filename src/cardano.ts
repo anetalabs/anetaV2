@@ -67,15 +67,15 @@ export class CardanoWatcher{
         console.log("Lucid Network", network);
         //const provider = new LucidEvolution.Blockfrost("https://cardano-preprod.blockfrost.io/api/v0", "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2");
         const provider = new U5C({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers});
-        const params = await provider.getProtocolParameters();
-        const cleanParams = Object.fromEntries(
-            Object.entries(params).map(([key, value]) => [
-                key, 
-                typeof value === 'bigint' ? Number(value) : value
-            ])
-        );
+        // const params = await provider.getProtocolParameters();
+        // const cleanParams = Object.fromEntries(
+        //     Object.entries(params).map(([key, value]) => [
+        //         key, 
+        //         typeof value === 'bigint' ? Number(value) : value
+        //     ])
+        // );
 
-        console.log("Params", JSON.stringify( cleanParams , null, 2));
+        // console.log("Params", JSON.stringify( cleanParams , null, 2));
          return await LucidEvolution.Lucid(provider, network);
         //return await LucidEvolution.Lucid(new UTXORpcProvider({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers}), network);
     }
@@ -229,9 +229,7 @@ export class CardanoWatcher{
             requestListing.completed = new Date();
             
         }
-        }
-        
-
+    }
     async rejectRequest(txHash: string, index: number){
         console.log("Rejecting Request", txHash, index);
         if(communicator.amILeader()){

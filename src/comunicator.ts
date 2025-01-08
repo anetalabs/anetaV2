@@ -33,6 +33,76 @@ interface angelPeer {
     state: NodeStatus;
 }
 
+interface SignatureRequestData {
+    type: 'rejection' | 'mint' | 'confescation';
+    txId: string;
+    signature: string;
+    tx: string;
+    metadata?: any;
+}
+
+interface BtcSignatureRequestData {
+    tx: string;
+    type: 'consolidation';
+}
+
+class InputValidator {
+    static readonly MAX_STRING_LENGTH = 1000; // Adjust based on your needs
+    static readonly VALID_NODE_STATES = [NodeStatus.Leader, NodeStatus.Follower, NodeStatus.Learner, NodeStatus.Monitor, NodeStatus.Candidate, NodeStatus.Disconnected];
+
+    static isValidString(str: unknown): boolean {
+        return typeof str === 'string' && str.length > 0 && str.length < this.MAX_STRING_LENGTH;
+    }
+
+    static isValidSignedMessage(data: unknown): data is LucidEvolution.SignedMessage {
+        return typeof data === 'object' && data !== null && 'signature' in data && 'key' in data;
+    }
+
+    static isValidVote(data: unknown): data is { vote: string; signature: LucidEvolution.SignedMessage } {
+        if (!data || typeof data !== 'object') return false;
+        const voteData = data as { vote: string; signature: LucidEvolution.SignedMessage };
+        
+        if (!this.isValidString(voteData.vote) || !this.isValidSignedMessage(voteData.signature)) {
+            console.log("Invalid vote data", voteData);
+            return false;
+        }
+
+        try {
+            const parsed = JSON.parse(voteData.vote as string);
+            return (
+                typeof parsed.candidate === 'number' &&
+                typeof parsed.time === 'number' &&
+                this.isValidString(parsed.voter)
+            );
+        } catch {
+            console.log("Invalid vote data2", voteData);
+            return false;
+        }
+    }
+
+    static isValidSignatureRequest(data: unknown): data is SignatureRequestData {
+        if (!data || typeof data !== 'object') return false;
+        const reqData = data as SignatureRequestData;
+        
+        return (
+            ['rejection', 'mint', 'confescation'].includes(reqData.type) &&
+            this.isValidString(reqData.txId) &&
+            this.isValidString(reqData.signature) &&
+            this.isValidString(reqData.tx)
+        );
+    }
+
+    static isValidBtcSignatureRequest(data: unknown): data is BtcSignatureRequestData {
+        if (!data || typeof data !== 'object') return false;
+        const reqData = data as BtcSignatureRequestData;
+        
+        return (
+            reqData.type === 'consolidation' &&
+            this.isValidString(reqData.tx)
+        );
+    }
+}
+
 export class Communicator {
     private peers: angelPeer[];
     private lucid: LucidEvolution.LucidEvolution;
@@ -421,23 +491,34 @@ export class Communicator {
 
         });
 
-        socket.on('vote', (vote ) => {   
-            try{
-                const decodedVote : vote= JSON.parse(vote.vote);
-                const addressHex =  LucidEvolution.CML.Address.from_bech32(decodedVote.voter).to_hex()  //this.stringToHex(response.address);
-                const verified = LucidEvolution.verifyData(addressHex , LucidEvolution.getAddressDetails(decodedVote.voter).paymentCredential?.hash ,this.stringToHex(vote.vote), vote.signature);
-                const addressIsPeer = (this.peers.findIndex(peer => peer.address === decodedVote.voter) === index);
-                if(verified && addressIsPeer && Math.abs(decodedVote.time - new Date().getTime() ) < HEARTBEAT){
-                    this.peers[index].votedFor = decodedVote.candidate;
-                }else{  
-                    console.log('Vote not verified');
+        socket.on('vote', (vote) => {   
+            try {
+                if (!InputValidator.isValidVote(vote)) {
+                    console.log('Invalid vote data received');
+                    return;
                 }
-        
-            }catch(err){
-                console.log(err);
+
+                const decodedVote: vote = JSON.parse(vote.vote);
+                const addressHex = LucidEvolution.CML.Address.from_bech32(decodedVote.voter).to_hex();
+                const verified = LucidEvolution.verifyData(
+                    addressHex,
+                    LucidEvolution.getAddressDetails(decodedVote.voter).paymentCredential?.hash,
+                    this.stringToHex(vote.vote),
+                    vote.signature
+                );
+
+                const addressIsPeer = (this.peers.findIndex(peer => peer.address === decodedVote.voter) === index);
+                const isTimeValid = Math.abs(decodedVote.time - Date.now()) < HEARTBEAT;
+
+                if (verified && addressIsPeer && isTimeValid) {
+                    this.peers[index].votedFor = decodedVote.candidate;
+                } else {
+                    console.log('Vote validation failed:', { verified, addressIsPeer, isTimeValid });
+                }
+            } catch (err) {
+                console.error('Error processing vote:', err);
             }
-        }
-        );        
+        });        
 
         socket.on('voteRequest', () => {
             this.vote(this.getLeader(), this.peers[index]);
@@ -450,46 +531,66 @@ export class Communicator {
         });
 
         socket.on('signatureRequest', async (data) => {
-            // if not leader, ignore
-            try{
-            if(this.peers[index].state !== NodeStatus.Leader || this.peers[this.Iam].state !== NodeStatus.Follower) return;
+            try {
+                if (!InputValidator.isValidSignatureRequest(data)) {
+                    console.log('Invalid signature request data');
+                    return;
+                }
+
+                if (this.peers[index].state !== NodeStatus.Leader || 
+                    this.peers[this.Iam].state !== NodeStatus.Follower) {
+                    return;
+                }
+
                 switch (data.type) {
                     case "rejection":
                         await ADAWatcher.signReject(data);
                         break;
                     case "mint":
-                        await ADAWatcher.signMint(data);
+                        if (!data.metadata) {
+                            console.log('Missing required metadata for mint signature');
+                            return;
+                        }
+                        
+                        // Ensure data.metadata exists before calling signMint
+                        if (data.metadata) {
+                            await ADAWatcher.signMint({
+                                ...data,
+                                metadata: data.metadata
+                            });
+                        }
                         break;
                     case "confescation":
                         await ADAWatcher.signConfescation(data);
                         break;
-                
                     default:
-                        console.log("Unknown Signature Request");
+                        console.log("Unknown Signature Request Type");
                 }    
-            }catch(err){
-                console.log("Error signing transaction", err);
+            } catch (err) {
+                console.error("Error processing signature request:", err);
             }
-            
         });
 
-        socket.on('btcSignatureRequest', async (tx: { tx : string , type: string  }) => {
-            // if not leader, ignore
-            if(this.peers[index].state !== NodeStatus.Leader || this.peers[this.Iam].state !== NodeStatus.Follower) return;
-            try{
-                switch (tx.type) {
-                    case "consolidation":
-                        console.log("signing consolidation transaction outer: ",tx);
-                        const signature = BTCWatcher.signConsolidationTransaction(tx.tx);
-                        console.log("seding signature", signature);
-                        this.peers[this.getLeader()].outgoingConnection.emit('btcSignatureResponse', signature);
-                        break;
-      
-                    }
-            }catch(err){
-                console.log("Error signing transaction", err);
-            }
+        socket.on('btcSignatureRequest', async (data) => {
+            try {
+                if (!InputValidator.isValidBtcSignatureRequest(data)) {
+                    console.log('Invalid BTC signature request data');
+                    return;
+                }
 
+                if (this.peers[index].state !== NodeStatus.Leader || 
+                    this.peers[this.Iam].state !== NodeStatus.Follower) {
+                    return;
+                }
+
+                if (data.type === "consolidation") {
+                    console.log("Signing consolidation transaction:", data);
+                    const signature = BTCWatcher.signConsolidationTransaction(data.tx);
+                    this.peers[this.getLeader()].outgoingConnection?.emit('btcSignatureResponse', signature);
+                }
+            } catch (err) {
+                console.error("Error processing BTC signature request:", err);
+            }
         });
 
         socket.on('btcSignatureResponse', async (data) => {
@@ -687,7 +788,7 @@ export class Communicator {
 
     }
 
-    leaderBroadcast(method, params= undefined) {
+    leaderBroadcast(method : string, params : any= undefined) {
         try{
             this.peers[this.getLeader()].outgoingConnection.emit(method, params);
         }catch(err){
@@ -696,7 +797,7 @@ export class Communicator {
     }
 
 
-    broadcast(method, params= undefined) {
+    broadcast(method : string, params : any= undefined) {
         this.peers.forEach((node, index) => {
             if (node.outgoingConnection && index !== this.Iam) {
                 node.outgoingConnection.emit(method, params);
@@ -704,7 +805,7 @@ export class Communicator {
         });
     }
 
-    sendToLeader(method, params= undefined) {
+    sendToLeader(method : string, params : any= undefined) {
         try{
             this.peers[this.getLeader()].outgoingConnection.emit(method, params);
         }catch(err){
