@@ -140,6 +140,7 @@ export class Communicator {
     private btcTransactionsBuffer: pendingBitcoinTransaction[] = [];
     private Iam: number;
     private networkStatus : {peers: any, leaderTimeout: number};
+    private _connectingPeers: Set<number>;
     constructor(topology: topology, secrets: secretsConfig , port: number ) {
         this.heartbeat = this.heartbeat.bind(this);
         
@@ -206,6 +207,21 @@ export class Communicator {
                 };
             });
         }
+
+        // Clean up on process exit
+        process.on('SIGINT', () => {
+            this.peers.forEach(peer => {
+                if (peer.outgoingConnection) {
+                    peer.outgoingConnection.disconnect();
+                }
+                if (peer.incomingConnection) {
+                    peer.incomingConnection.disconnect();
+                }
+            });
+            process.exit();
+        });
+
+        this._connectingPeers = new Set();
     }
 
     start(port: number) {
@@ -215,7 +231,7 @@ export class Communicator {
 
         io.on('connection', (socket) => {
             console.log('Client connected');
-
+            
             
             this.handShake(socket);
         });
@@ -331,7 +347,7 @@ export class Communicator {
        const  foundRedemptionsRaw = foundRedemptions.map((redemption) => redemption.currentTransaction);
 
        foundRedemptionsRaw.forEach((redemption) => {
-            this.leaderBroadcast("updateRequest", redemption);
+            this.sendToLeader("updateRequest", redemption);
        });
     }
 
@@ -380,7 +396,7 @@ export class Communicator {
          
             
             if(node.outgoingConnection === null ){
-                this.connect(index);
+                if(index !== this.Iam )   this.connect(index);
             }
             if ([NodeStatus.Monitor, NodeStatus.Learner, NodeStatus.Candidate].includes(node.state)) { 
                 let leader = this.getLeader();
@@ -420,16 +436,23 @@ export class Communicator {
     }
 
     private handShake(socket: ServerSocket) : void{
-        function generateRandomHex(size: number): string {
-            const bytes = crypto.getRandomValues(new Uint8Array(size));
-            return Array.from(bytes)
-                .map(b => b.toString(16).padStart(2, '0'))
-                .join('');
-        }
-        const challenge = "challenge" + generateRandomHex(64);
+        const timestamp = Date.now();
+        const nonce = crypto.getRandomValues(new Uint8Array(32));
+        const challenge = Buffer.concat([
+            Buffer.from("challenge"),
+            Buffer.from(timestamp.toString()),
+            Buffer.from(nonce)
+        ]).toString('hex');
+    
         console.log("Starting handshake")
+        const handshakeTimeout = setTimeout(() => {
+            socket.disconnect();
+            console.log("Handshake timeout");
+        }, HEARTBEAT*5);
+    
         socket.emit('challenge', challenge);
         socket.on('challengeResponse', async (response) => {
+            clearTimeout(handshakeTimeout);
             console.log("Challenge response received")
             const addressHex =  LucidEvolution.CML.Address.from_bech32(response.address).to_hex()  //this.stringToHex(response.address);
             console.log("challenge response address", response, response.address);
@@ -493,6 +516,10 @@ export class Communicator {
         return leader;
     }
 
+    private getActiveLeader() : number{
+        return this.peers.findIndex((node) => node.state === NodeStatus.Leader);
+    }
+    
     private applyRuntimeListeners(socket: ServerSocket, index: number) {
         
         // socket.removeAllListeners();
@@ -506,6 +533,7 @@ export class Communicator {
 
 
         socket.on('statusUpdate', (status) => {
+            if(status == this.peers[index].state) return;
             if (!this.validateStateTransition(this.peers[index].state, status)) {
                 console.log('Invalid state transition attempted:', {
                     from: this.peers[index].state,
@@ -804,71 +832,70 @@ export class Communicator {
         if (peer.incomingConnection) peer.incomingConnection.disconnect();
         if (peer.outgoingConnection) peer.outgoingConnection.disconnect();
     }
-
     
     private async connect(i: number) {
+        if (this._connectingPeers.has(i)) {
+            console.log('Connection attempt already in progress');
+            return;
+        }
+
+        // Add peer to connecting set
+        this._connectingPeers.add(i);
+
+        // Remove from connecting set after delay
+        setTimeout(() => {
+            this._connectingPeers.delete(i);
+        }, 5000); // 5 second timeout
+
         if (this.peers[i].outgoingConnection) {
             console.log('Connection already exists');
             return;
         }
-        const reconnectDelay =  30000;
 
+        const socket = Client(`http://${this.peers[i].ip}:${this.peers[i].port}`);
+        this.peers[i].outgoingConnection = socket;
 
-        setTimeout(() => {
-            const peerPort = this.peers[i].port;
-            const socket = Client(`http://${this.peers[i].ip}:${peerPort}`);
-            this.peers[i].outgoingConnection = socket;
+        socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+            this.peers[i].outgoingConnection = null;
+            this.peers[i].state = NodeStatus.Disconnected;
+            this._connectingPeers.delete(i);  // Clear connecting state
+        });
 
-            socket.on('disconnect', () => {
-                console.log('Disconnected from server');
-                this.peers[i].outgoingConnection = null;
-                this.peers[i].state = NodeStatus.Disconnected;
-            });
+        socket.on('connect_error', (error) => {
+            socket.disconnect();
+            this.peers[i].outgoingConnection = null;
+            this.peers[i].state = NodeStatus.Disconnected;
+            this._connectingPeers.delete(i);  // Clear connecting state
+        });
 
-            socket.on('connect_error', (error) => {
-                socket.disconnect();
-                this.peers[i].outgoingConnection = null;
+        socket.on('connect_timeout', () => {
+            console.log('Connection Timeout');
+            socket.disconnect();
+            this.peers[i].outgoingConnection = null;
+            this.peers[i].state = NodeStatus.Disconnected;
+            this._connectingPeers.delete(i);  // Clear connecting state
+        });
 
-            });
+        socket.on('challenge', async (challenge : string) => {
+            if (!InputValidator.isValidString(challenge)) {
+                console.log('Invalid challenge data');
+                return;
+            }
+            console.log("Challenge received", challenge);
+            const message : Object= await this.lucid.wallet().signMessage(this.address, this.stringToHex(challenge));
+            message["address"] = this.address;
+            socket.emit('challengeResponse', message);
+        });
 
-            socket.on('connect_timeout', () => {
-                console.log('Connection Timeout');
-                
-                socket.disconnect();
-                this.peers[i].outgoingConnection = null;
-
-            });
-
-
-            socket.on('challenge', async (challenge : string) => {
-                if (!InputValidator.isValidString(challenge)) {
-                    console.log('Invalid challenge data');
-                    return;
-                }
-                console.log("Challenge received", challenge);
-                const message : Object= await this.lucid.wallet().signMessage(this.address, this.stringToHex(challenge));
-                message["address"] = this.address;
-                socket.emit('challengeResponse', message);
-            });
-
-            socket.on('authenticationAccepted', () => {
-                try{
-                    console.log('Authentication accepted');
-                    this.peers[i].outgoingConnection.emit("statusUpdate", this.peers[this.Iam].state);
-                }catch(err){
-                    console.log("Error sending status update", err);
-                }
-            });
-        }, reconnectDelay);
-
-    }
-
-    leaderBroadcast(method : string, params : any= undefined) {
-        try{
-            this.peers[this.getLeader()].outgoingConnection.emit(method, params);
-        }catch(err){
-            console.log("Error sending to leader", err);
-        }
+        socket.on('authenticationAccepted', () => {
+            try{
+                console.log('Authentication accepted');
+                this.peers[i].outgoingConnection.emit("statusUpdate", this.peers[this.Iam].state);
+            }catch(err){
+                console.log("Error sending status update", err);
+            }
+        });
     }
 
 
@@ -882,7 +909,8 @@ export class Communicator {
 
     sendToLeader(method : string, params : any= undefined) {
         try{
-            this.peers[this.getLeader()].outgoingConnection.emit(method, params);
+            if(this.getActiveLeader() === -1 || this.getActiveLeader() === this.Iam) return;
+            this.peers[this.getActiveLeader()].outgoingConnection.emit(method, params);
         }catch(err){
             console.log("Error sending to leader", err);
         }
@@ -890,12 +918,12 @@ export class Communicator {
 
     private validateStateTransition(currentState: NodeStatus, newState: NodeStatus): boolean {
         const validTransitions = {
-            [NodeStatus.Disconnected]: [NodeStatus.Learner],
+            [NodeStatus.Disconnected]: [NodeStatus.Learner, NodeStatus.Follower , NodeStatus.Candidate],
             [NodeStatus.Learner]: [NodeStatus.Follower, NodeStatus.Candidate],
             [NodeStatus.Follower]: [NodeStatus.Candidate, NodeStatus.Disconnected],
             [NodeStatus.Candidate]: [NodeStatus.Leader, NodeStatus.Follower, NodeStatus.Disconnected],
             [NodeStatus.Leader]: [NodeStatus.Follower, NodeStatus.Disconnected],
-            [NodeStatus.Monitor]: [NodeStatus.Follower, NodeStatus.Disconnected]
+            [NodeStatus.Monitor]: [NodeStatus.Follower, NodeStatus.Disconnected , NodeStatus.Candidate]
         };
     
         return validTransitions[currentState]?.includes(newState) || false;

@@ -137,7 +137,7 @@ export class Coordinator{
                     let [currentTransaction, requests] = await BTCWatcher.craftRedemptionTransaction(redemptionRequests);
                     await this.newRedemption(currentTransaction, requests);
                 }else{
-                    communicator.leaderBroadcast("queryRedemption");
+                    communicator.sendToLeader("queryRedemption");
                 }
             } catch (e) {
                 console.log("Error crafting redemption transaction", e);
@@ -199,7 +199,7 @@ export class Coordinator{
                     }else{
                         if(newRedemptionState.index === currentRedemptionState.index + 1) {
                             await this.redemptionDb.findOneAndUpdate({ index : newRedemptionState.index, alternative: newRedemptionState.alternative  }, { $set: newRedemptionState }, { upsert: true });
-                            communicator.leaderBroadcast("updateRequest", currentRedemptionState.currentTransaction);
+                            communicator.sendToLeader("updateRequest", currentRedemptionState.currentTransaction);
                         }
                     }
                 }
@@ -495,7 +495,7 @@ export class Coordinator{
             }else{
                 //sleep 2 sec and broadcast signature
                 await new Promise((resolve) => setTimeout(resolve, 2000));
-                communicator.leaderBroadcast("newRedemSignature", {sig});
+                communicator.sendToLeader("newRedemSignature", {sig});
             }            
         }
     }
