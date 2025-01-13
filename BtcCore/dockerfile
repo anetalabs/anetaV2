@@ -1,6 +1,6 @@
 FROM ubuntu:latest
 
-ENV COIN_VERSION="28.0"
+ENV COIN_VERSION="28.1"
 ENV TARBALL_NAME="bitcoin-${COIN_VERSION}"
 ENV BINARY_URL="https://bitcoincore.org/bin/bitcoin-core-${COIN_VERSION}/${TARBALL_NAME}-x86_64-linux-gnu.tar.gz"
 ENV COIN_TMP="/var/tmp/"
