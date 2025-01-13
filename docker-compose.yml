@@ -52,6 +52,7 @@ services:
       timeout: 10s
     networks:
       - backend
+      - frontend
   mongo:
     image: mongo
     restart: always
