@@ -7,6 +7,15 @@ services:
       dockerfile: dockerfile
     volumes:
       - ../data/bitcoin:/data
+    user: "1000:1000"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "bitcoin-cli", "getblockchaininfo"]
+      interval: 60s
+      retries: 5
+      start_period: 20s
+      timeout: 10s
   guardian-angel:
     build:
       dockerfile: dockerfile
@@ -21,6 +30,16 @@ services:
       - mongo 
       - dolos
       - bitcoin
+    user: "1000:1000"
+    networks:
+      - backend
+      - frontend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
   dolos:
     image: ghcr.io/txpipe/dolos:latest
     volumes:
@@ -34,6 +53,9 @@ services:
       retries: 5
       start_period: 20s
       timeout: 10s
+    user: "1000:1000"
+    networks:
+      - backend
   mongo:
     image: mongo
     restart: always
@@ -41,3 +63,19 @@ services:
       -  "127.0.0.1:27017:27017"
     volumes:
       - ../data/mongo:/data/db
+    user: "1000:1000"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "'db.runCommand(\"ping\").ok'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - backend
+
+
+networks:
+  backend:
+    internal: true
+  frontend:
+    driver: bridge
