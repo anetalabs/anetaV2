@@ -9,7 +9,7 @@ import {BIP32Factory , BIP32Interface} from 'bip32';
 import { utxo } from "./types.js";
 import  {METADATA_TAG} from "./cardano.js";
 import { ADAWatcher, communicator, coordinator } from "./index.js";
-
+import { ConnectError } from "@connectrpc/connect";
 const ECPair =  ECPairFactory(ecc);
 export const utxoEventEmitter = new EventEmitter();
 
@@ -18,6 +18,7 @@ type addressUtxos = {
     address: string,
     utxos: utxo[]
 }
+
 
 
 export class BitcoinWatcher{
@@ -38,18 +39,35 @@ export class BitcoinWatcher{
         this.config = config
         this.topology = topology
         this.protocol = protocol
-        this.client = new BitcoinCore(config.bitcoinRPC);
         this.address =  Array.from({length: protocol.paymentPaths}, (_, index) => index).map((index) => this.getAddress(index))
         console.log("Vault Address:", this.getVaultAddress())
-        this.watcherSync()
         const seed = bip39.mnemonicToSeedSync(secrets.seed);
         const bip32 = BIP32Factory(ecc);
-        
+        this.initialize()
         this.root = bip32.fromSeed(seed);
         const path = "m/44'/0'/0'/0/0"; // This is the BIP44 path for the first address in the first account of a Bitcoin wallet
         const node = this.root.derivePath(path);
 
         this.watcherKey = ECPair.fromPrivateKey(Buffer.from(node.privateKey.toString('hex'),'hex'), { network: bitcoin.networks[config.network] })
+    }
+
+    initialize = async () => {
+        let attempts = 0;
+        while (true) {
+            try{
+
+            console.log("initializing bitcoin client")
+            const client = new BitcoinCore(this.config.bitcoinRPC);
+            await client.getBlockCount()
+            this.client = client
+            break;
+        } catch (error) {
+            console.error("Failed to initialize Bitcoin Core client:", error);
+        }
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, 10000));
+    }
+    this.watcherSync()
     }
 
     startListener = async () => {

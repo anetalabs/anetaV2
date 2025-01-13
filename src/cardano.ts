@@ -41,7 +41,6 @@ export class CardanoWatcher{
 
         this.cardanoNetwork = config.network.charAt(0).toUpperCase() + config.network.slice(1) as LucidEvolution.Network;
         this.config = config;
-
         (async () => {
          
            this.lucid = await this.newLucidInstance ();
@@ -63,20 +62,28 @@ export class CardanoWatcher{
     }
 
     async newLucidInstance (){
-        const network = (this.config.network.charAt(0).toUpperCase() + this.config.network.slice(1)) as LucidEvolution.Network;
-        console.log("Lucid Network", network);
-        //const provider = new LucidEvolution.Blockfrost("https://cardano-preprod.blockfrost.io/api/v0", "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2");
-        const provider = new U5C({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers});
-        // const params = await provider.getProtocolParameters();
-        // const cleanParams = Object.fromEntries(
-        //     Object.entries(params).map(([key, value]) => [
-        //         key, 
-        //         typeof value === 'bigint' ? Number(value) : value
-        //     ])
-        // );
+        while(true){
+            try{
+                const network = (this.config.network.charAt(0).toUpperCase() + this.config.network.slice(1)) as LucidEvolution.Network;
+                console.log("Lucid Network", network);
+                //const provider = new LucidEvolution.Blockfrost("https://cardano-preprod.blockfrost.io/api/v0", "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2");
+                const provider = new U5C({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers});
+                // const params = await provider.getProtocolParameters();
+                // const cleanParams = Object.fromEntries(
+                //     Object.entries(params).map(([key, value]) => [
+                //         key, 
+                //         typeof value === 'bigint' ? Number(value) : value
+                //     ])
+                // );
 
-        // console.log("Params", JSON.stringify( cleanParams , null, 2));
-         return await LucidEvolution.Lucid(provider, network);
+                // console.log("Params", JSON.stringify( cleanParams , null, 2));
+                // sleep for 1 second
+                return await LucidEvolution.Lucid(provider, network);
+            }catch(e){
+                console.log("Failed to initialize Lucid instance", e);
+                await new Promise(resolve => setTimeout(resolve, 10000));
+            }
+        }
         //return await LucidEvolution.Lucid(new UTXORpcProvider({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers}), network);
     }
 
