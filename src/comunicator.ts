@@ -231,8 +231,15 @@ export class Communicator {
 
         io.on('connection', (socket) => {
             console.log('Client connected');
-            
-            
+            const clientIp = socket.handshake.headers['x-forwarded-for'] || 
+            socket.handshake.address.replace(/^::ffff:/, ''); // Remove IPv6 prefix if present
+
+            //if the address is not in the topology, disconnect
+            if(!this.topology.topology.find((node) => node.ip === clientIp)){
+                console.log("Peer not found in topology", clientIp);
+                socket.disconnect();
+                return;
+            }
             this.handShake(socket);
         });
 
@@ -451,6 +458,7 @@ export class Communicator {
         }, HEARTBEAT*5);
     
         socket.emit('challenge', challenge);
+
         socket.on('challengeResponse', async (response) => {
             clearTimeout(handshakeTimeout);
             console.log("Challenge response received")
@@ -459,6 +467,11 @@ export class Communicator {
             const verified = LucidEvolution.verifyData(addressHex , LucidEvolution.getAddressDetails(response.address).paymentCredential?.hash ,this.stringToHex(challenge), response);
             if(verified){
                 const peerindex = this.peers.findIndex(peer => peer.address === response.address);
+                if(peerindex === -1){
+                    console.log("Peer not found", response.address);
+                    socket.disconnect();
+                    return;
+                }
                 this.applyRuntimeListeners(socket,peerindex);
                 this.peers[peerindex].incomingConnection = socket;
                 this.peers[peerindex].connectionTime = new Date();
