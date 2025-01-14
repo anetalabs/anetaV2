@@ -66,8 +66,8 @@ export class CardanoWatcher{
             try{
                 const network = (this.config.network.charAt(0).toUpperCase() + this.config.network.slice(1)) as LucidEvolution.Network;
                 console.log("Lucid Network", network);
-                //const provider = new LucidEvolution.Blockfrost("https://cardano-preprod.blockfrost.io/api/v0", "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2");
-                const provider = new U5C({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers});
+                const provider = new LucidEvolution.Blockfrost("https://cardano-preprod.blockfrost.io/api/v0", "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2");
+                //const provider = new U5C({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers});
                 // const params = await provider.getProtocolParameters();
                 // const cleanParams = Object.fromEntries(
                 //     Object.entries(params).map(([key, value]) => [
