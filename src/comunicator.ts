@@ -234,12 +234,7 @@ export class Communicator {
             const clientIp = socket.handshake.headers['x-forwarded-for'] || 
             socket.handshake.address.replace(/^::ffff:/, ''); // Remove IPv6 prefix if present
 
-            //if the address is not in the topology, disconnect
-            if(!this.topology.topology.find((node) => node.ip === clientIp)){
-                console.log("Peer not found in topology", clientIp);
-                socket.disconnect();
-                return;
-            }
+
             this.handShake(socket);
         });
 
