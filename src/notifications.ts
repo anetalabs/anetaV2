@@ -8,25 +8,27 @@ import { notification } from './index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
 export class NotificationManager {
     private dir: string;
-    constructor(settings : notificationConfig) {
-      this.dir = settings.directory;
-
+    constructor(settings: notificationConfig) {
+        this.dir = settings.directory;
     }
 
-    
-    notify(notification : string) : void {
+    notify(notification: string): void {
+        // URL-encode the notification message
+        const encodedNotification = encodeURIComponent(notification);
+
         fs.readdir(this.dir, (err, files) => {
             if (err) {
                 console.error(`Error reading directory: ${err}`);
                 return;
             }
-        
+
             files.forEach(file => {
-                if (['.sh','.js','.bat'].includes(path.extname(file))){
+                if (['.sh', '.js', '.bat'].includes(path.extname(file))) {
                     console.log(`Executing ${this.dir} ${file}`);
-                    exec(`"${path.join(__dirname , ".." ,this.dir, file)}" "${notification}"`, (err, stdout, stderr) => {
+                    exec(`"${path.join(__dirname, "..", this.dir, file)}" "${encodedNotification}"`, (err, stdout, stderr) => {
                         if (err) {
                             console.error(`Error executing ${file}: ${err}`);
                             return;
@@ -35,6 +37,5 @@ export class NotificationManager {
                 }
             });
         });
-    
     }
 }

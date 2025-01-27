@@ -538,7 +538,6 @@ export class BitcoinWatcher{
         let totalInputValue = 0;
         let totalOutputValue = 0;
         txb.data.inputs.forEach((input) => {
-
             if(validScipts.includes(input.witnessScript.toString('hex')) === false) throw new Error('Invalid consolidation transaction Input');
 
             totalInputValue += input.witnessUtxo.value;

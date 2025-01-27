@@ -106,6 +106,7 @@ export class CardanoWatcher{
         try{
         await axios.post( "https://cardano-preprod.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toCBOR({canonical : true}), 'hex'), {headers: {"project_id": "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2", "Content-Type": "application/cbor"}})   
         //    / await this.lucid.config().provider.submitTx(tx.toCBOR());
+        communicator.removeCardanoTransaction(tx.toHash());
     }catch(e){
             console.log(e);
         }

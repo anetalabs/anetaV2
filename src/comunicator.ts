@@ -1,4 +1,4 @@
-import { ADAWatcher, BTCWatcher, coordinator } from './index.js';
+import { ADAWatcher, BTCWatcher, coordinator, notification } from './index.js';
 import { topology, secretsConfig, pendingCardanoTransaction, pendingBitcoinTransaction, NodeStatus, redemptionController , redemptionState , cardanoConfig} from './types.js';
 import { Server, Socket as ServerSocket } from 'socket.io';
 import { Socket as ClientSocket } from 'socket.io-client';
@@ -31,6 +31,7 @@ interface angelPeer {
     outgoingConnection: ClientSocket | null;
     incomingConnection: ServerSocket | null;
     state: NodeStatus;
+    penaltyTime: Date | null;
 }
 
 interface SignatureRequestData {
@@ -141,9 +142,12 @@ export class Communicator {
     private Iam: number;
     private networkStatus : {peers: any, leaderTimeout: number};
     private _connectingPeers: Set<number>;
+    private signatureTimeouts: Map<string, { startTime: number, attempts: number }> = new Map();
+    private static readonly SIGNATURE_TIMEOUT = 0.5 * 60 * 1000; // 5 minutes
+    private static readonly PENALTY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+    private static readonly MAX_SIGNATURE_ATTEMPTS = 3;
     constructor(topology: topology, secrets: secretsConfig , port: number ) {
         this.heartbeat = this.heartbeat.bind(this);
-        
         this.topology = topology;
         (async () => {
             try {
@@ -168,7 +172,6 @@ export class Communicator {
                 this.Iam = found;
                 this.address = LucidEvolution.credentialToAddress(this.cardanoNetwork,{type: "Key", hash: pubKey});
                 this.peers = initializeNodes(topology, this.Iam, this.cardanoNetwork);
-                //while not synced delay 
   
                 while(!(ADAWatcher.inSync() && BTCWatcher.inSync())){
                     await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -197,6 +200,7 @@ export class Communicator {
                     log: [],
                     connectionTime: undefined,
                     lastApplied: 0,
+                    penaltyTime: null,
                     port: node.port,
                     ip: node.ip,
                     address: LucidEvolution.credentialToAddress(cardanoNetwork,{type: "Key", hash: node.AdaPkHash}) ,
@@ -231,10 +235,7 @@ export class Communicator {
 
         io.on('connection', (socket) => {
             console.log('Client connected');
-            const clientIp = socket.handshake.headers['x-forwarded-for'] || 
-            socket.handshake.address.replace(/^::ffff:/, ''); // Remove IPv6 prefix if present
-
-
+            
             this.handShake(socket);
         });
 
@@ -396,8 +397,10 @@ export class Communicator {
         
         this.peers.forEach((node, index) => {
          
-            
-            if(node.outgoingConnection === null ){
+            if(node.penaltyTime && node.penaltyTime < new Date()){
+                 node.penaltyTime = null;
+            }
+            if(node.outgoingConnection === null && node.penaltyTime === null){
                 if(index !== this.Iam )   this.connect(index);
             }
             if ([NodeStatus.Monitor, NodeStatus.Learner, NodeStatus.Candidate].includes(node.state)) { 
@@ -462,6 +465,11 @@ export class Communicator {
             const verified = LucidEvolution.verifyData(addressHex , LucidEvolution.getAddressDetails(response.address).paymentCredential?.hash ,this.stringToHex(challenge), response);
             if(verified){
                 const peerindex = this.peers.findIndex(peer => peer.address === response.address);
+                if(this.peers[peerindex].penaltyTime && this.peers[peerindex].penaltyTime > new Date()){
+                    console.log("Peer is penalized", response.address);
+                    socket.disconnect();
+                    return;
+                }
                 if(peerindex === -1){
                     console.log("Peer not found", response.address);
                     socket.disconnect();
@@ -673,6 +681,8 @@ export class Communicator {
                             tx.tx.finalizeAllInputs();
                             BTCWatcher.completeAndSubmit(tx.tx).then((txId) => {
                                     console.log("Transaction completed and submitted", txId , tx.type);   
+                                    this.transactionsBuffer = this.transactionsBuffer.filter(t => t.txId !== tx.tx.toHex());
+                                    this.signatureTimeouts.delete(`${tx.tx.toHex()}-${this.peers[index].keyHash}`);
                                 }).catch((err) => {
                                     console.log("Error completing and submitting transaction", err);
                                 });
@@ -759,7 +769,6 @@ export class Communicator {
             
         });
 
-``
         socket.on('updateRequest', async (data : string) => {
             // if not leader, ignore
             if (!InputValidator.isValidString(data)) {
@@ -805,17 +814,79 @@ export class Communicator {
                 const [decodedTx , _ ] = ADAWatcher.decodeTransaction(tx.tx.toCBOR({canonical : true}))
 
                 if(node.state === NodeStatus.Follower && node.outgoingConnection && decodedTx.required_signers.some((signature : string) => signature === node.keyHash) && tx.status === "pending"){
+                    // Track signature request
+                    const sigKey = `${tx.txId}-${node.keyHash}`;
+                    const timeoutInfo = this.signatureTimeouts.get(sigKey) || { startTime: Date.now(), attempts: 0 };
+                    
+                    // Check if we've been waiting too long for this signature
+                    if (timeoutInfo.startTime + Communicator.SIGNATURE_TIMEOUT < Date.now()) {
+                        console.log(`Signature timeout for node ${node.id} on tx ${tx.txId}`);
+                        
+                        // Increment attempts and reset timer
+                        timeoutInfo.attempts++;
+                        timeoutInfo.startTime = Date.now();
+                        
+                        if (timeoutInfo.attempts >= Communicator.MAX_SIGNATURE_ATTEMPTS) {
+                            console.log(`Node ${node.id} failed to sign after ${Communicator.MAX_SIGNATURE_ATTEMPTS} attempts`);
+                            // Remove the transaction from buffer
+                            this.transactionsBuffer = this.transactionsBuffer.filter(t => t.txId !== tx.txId);
+                            this.signatureTimeouts.delete(sigKey);
+                            this.applyPunitveMeasures(node, `Cardano Signature timeout, txId: ${tx.txId}, type: ${tx.type}`);
+                            return;
+                        }
+                    }
+                    
+                    // Update timeout tracking
+                    this.signatureTimeouts.set(sigKey, timeoutInfo);
+                    
+                    // Request signature
                     node.outgoingConnection.emit('signatureRequest', {type: tx.type , txId: tx.txId, signature: tx.signatures[0], tx: tx.tx.toCBOR({canonical : true}), metadata: tx.metadata});
                 }
             });
 
             this.btcTransactionsBuffer.forEach((tx) => {
                 if(node.state === NodeStatus.Follower && node.outgoingConnection && tx.status === "pending"){
+                    // Track signature request
+                    const sigKey = `${tx.tx.toHex()}-${node.keyHash}`;
+                    const timeoutInfo = this.signatureTimeouts.get(sigKey) || { startTime: Date.now(), attempts: 0 };
+                    
+                    // Check if we've been waiting too long for this signature
+                    if (timeoutInfo.startTime + Communicator.SIGNATURE_TIMEOUT < Date.now()) {
+                        console.log(`BTC signature timeout for node ${node.id}`);
+                        
+                        // Increment attempts and reset timer
+                        timeoutInfo.attempts++;
+                        timeoutInfo.startTime = Date.now();
+                        
+                        if (timeoutInfo.attempts >= Communicator.MAX_SIGNATURE_ATTEMPTS) {
+                            console.log(`Node ${node.id} failed to sign BTC tx after ${Communicator.MAX_SIGNATURE_ATTEMPTS} attempts`);
+                            // Remove the transaction from buffer
+                            this.btcTransactionsBuffer = this.btcTransactionsBuffer.filter(t => t.tx.toHex() !== tx.tx.toHex());
+                            this.signatureTimeouts.delete(sigKey);
+                            this.applyPunitveMeasures(node, `BTC Signature timeout, txId: ${tx.tx.toHex()}, type: ${tx.type}`);
+                            return;
+                        }
+                    }
+                    
+                    // Update timeout tracking
+                    this.signatureTimeouts.set(sigKey, timeoutInfo);
+                    
+                    // Request signature
                     node.outgoingConnection.emit('btcSignatureRequest', { tx : tx.tx.toHex(), type: tx.type});
                 }
             });
         });
     }
+  // Remove Cardano the transaction from buffer
+  public removeCardanoTransaction(txId : string){
+    this.transactionsBuffer = this.transactionsBuffer.filter(t => t.txId !== txId);
+    this.signatureTimeouts.delete(`${txId}-${this.peers[this.Iam].keyHash}`);
+  }
+
+    public amI() : number {
+        return this.Iam;
+    }
+
 
     public checkAdaQuorum(pKHashes : string[] ) : boolean {
         console.log("Checking quorum", pKHashes)
@@ -835,10 +906,13 @@ export class Communicator {
     }
         
     
-    private applyPunitveMeasures(peer: angelPeer) {
-        console.log('Applying punitive measures');
+    private applyPunitveMeasures(peer: angelPeer, reason : string) {
+        console.error("ERROR: Penilizing peer", peer.id, "for", reason);
+        peer.state = NodeStatus.Disconnected;
+        peer.penaltyTime = new Date(Date.now() + Communicator.PENALTY_TIMEOUT);
         if (peer.incomingConnection) peer.incomingConnection.disconnect();
         if (peer.outgoingConnection) peer.outgoingConnection.disconnect();
+        notification.notify(`Node ${peer.id} has been penilized for ${reason}`);
     }
     
     private async connect(i: number) {
