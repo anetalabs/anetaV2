@@ -458,18 +458,18 @@ export class Communicator {
         socket.emit('challenge', challenge);
 
         socket.on('challengeResponse', async (response) => {
+            const peerindex = this.peers.findIndex(peer => peer.address === response.address);
             clearTimeout(handshakeTimeout);
+            if(this.peers[peerindex].penaltyTime && this.peers[peerindex].penaltyTime > new Date()){
+                console.log("Peer is penalized", response.address);
+                socket.disconnect();
+                return;
+            }
             console.log("Challenge response received")
             const addressHex =  LucidEvolution.CML.Address.from_bech32(response.address).to_hex()  //this.stringToHex(response.address);
             console.log("challenge response address", response, response.address);
             const verified = LucidEvolution.verifyData(addressHex , LucidEvolution.getAddressDetails(response.address).paymentCredential?.hash ,this.stringToHex(challenge), response);
             if(verified){
-                const peerindex = this.peers.findIndex(peer => peer.address === response.address);
-                if(this.peers[peerindex].penaltyTime && this.peers[peerindex].penaltyTime > new Date()){
-                    console.log("Peer is penalized", response.address);
-                    socket.disconnect();
-                    return;
-                }
                 if(peerindex === -1){
                     console.log("Peer not found", response.address);
                     socket.disconnect();
