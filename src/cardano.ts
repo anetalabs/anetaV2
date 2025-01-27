@@ -2,9 +2,9 @@ import { Db } from "mongodb";
 import { toHexString, txId,  hexToString } from "./helpers.js";
 //import * as Lucid  from 'lucid-cardano'
 import * as LucidEvolution from '@lucid-evolution/lucid'
-import { U5C, U5C as UTXORpcProvider } from "@utxorpc/lucid-evolution-provider/lib/index.js";
+import { U5C, U5C as UTXORpcProvider } from "@utxorpc/lucid-evolution-provider";
 
-import { CardanoSyncClient  , CardanoQueryClient } from "@utxorpc/sdk";
+import { CardanoSyncClient  , CardanoSubmitClient } from "@utxorpc/sdk";
 import {cardanoConfig, secretsConfig, mintRequest , MintRequestSchema, RedemptionRequestSchema, utxo, redemptionRequest, protocolConfig} from "./types.js"
 import axios from "axios";
 import { getDb } from "./db.js";
@@ -66,8 +66,9 @@ export class CardanoWatcher{
             try{
                 const network = (this.config.network.charAt(0).toUpperCase() + this.config.network.slice(1)) as LucidEvolution.Network;
                 console.log("Lucid Network", network);
-                const provider = new LucidEvolution.Blockfrost("https://cardano-preprod.blockfrost.io/api/v0", "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2");
-                //const provider = new U5C({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers});
+                //const provider = new LucidEvolution.Blockfrost("https://cardano-preprod.blockfrost.io/api/v0", "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2");
+                const provider = new U5C({url: this.config.utxoRpc.host, headers: this.config.utxoRpc.headers});
+
                 // const params = await provider.getProtocolParameters();
                 // const cleanParams = Object.fromEntries(
                 //     Object.entries(params).map(([key, value]) => [
@@ -75,6 +76,7 @@ export class CardanoWatcher{
                 //         typeof value === 'bigint' ? Number(value) : value
                 //     ])
                 // );
+                // console.log("Params", JSON.stringify( cleanParams.minFeeRefScriptCostPerByte , null, 2));
 
                 // console.log("Params", JSON.stringify( cleanParams , null, 2));
                 // sleep for 1 second
@@ -99,15 +101,12 @@ export class CardanoWatcher{
     }
 
     async submitTransaction(tx: LucidEvolution.TxSigned){
-        //this.lucid.provider.submitTx(tx.toString());
-        console.log("Submitting: ", tx.toJSON());
-        
+        //this.lucid.provider.submitTx(tx.toString());     
+        console.log("Submitting: ", tx.toHash());
         try{
-            await axios.post( "https://cardano-preprod.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toCBOR({canonical : true}), 'hex'), {headers: {"project_id": "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2", "Content-Type": "application/cbor"}})   
-           // await this.lucid.config().provider.submitTx(tx.toCBOR());
-            // await tx.submit();
-           // await this.lucid.provider.submitTx(tx.toString());
-        }catch(e){
+        await axios.post( "https://cardano-preprod.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toCBOR({canonical : true}), 'hex'), {headers: {"project_id": "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2", "Content-Type": "application/cbor"}})   
+        //    / await this.lucid.config().provider.submitTx(tx.toCBOR());
+    }catch(e){
             console.log(e);
         }
     }
