@@ -326,7 +326,7 @@ export class Coordinator{
                     const signatureInfo = ADAWatcher.decodeSignature(signature);
                     if (!signatureInfo.witness.vkeywitnesses().get(0).vkey().verify( Buffer.from(burnTx.toHash(), 'hex'), signatureInfo.witness.vkeywitnesses().get(0).ed25519_signature())){
                         console.log("Invalid signature");
-                        return;
+                        throw new Error("Invalid signature for Cardano transaction txId: " + burnTx.toHash() + " type: Burn" );
                     }
         
                 if(redemption.state !== redemptionState.forged) return;
@@ -368,7 +368,6 @@ export class Coordinator{
     }
 
     async newRedemptionSignature(signature: string){
-    try{
         const redemption = await this.redemptionDb.findOne({ state : redemptionState.burned });
         console.log("New redemption signature", signature , redemption);
 
@@ -407,9 +406,7 @@ export class Coordinator{
             communicator.broadcast("updateRedemptionToComplete", {  tx: redemption.redemptionTx});
 
         }
-        }catch(err){
-            console.log("redemption signature error:", err);
-        }
+
     }
 
     async loadBurn(tx , block , redemptionTx: string){
@@ -477,8 +474,7 @@ export class Coordinator{
                     let [currentTransaction, requests] = await BTCWatcher.craftRedemptionTransaction(redemptionRequests);
                     await this.newRedemption(currentTransaction, requests);
                 }
-            }
-            else{
+            }else{
                 ADAWatcher.signBurn(redemptions[0].burningTransaction.tx);
             }
         }
@@ -496,8 +492,9 @@ export class Coordinator{
                 //sleep 2 sec and broadcast signature
                 await new Promise((resolve) => setTimeout(resolve, 2000));
                 communicator.sendToLeader("newRedemSignature", {sig});
-            }            
-        }
+            } 
+            }   
+
     }
 
     async checkRedemption(){

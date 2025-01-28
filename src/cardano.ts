@@ -113,6 +113,8 @@ export class CardanoWatcher{
     }
 
     async signBurn(txHex : string){
+        const signers = this.getTxSigners(txHex);
+        if(!signers.includes(this.myKeyHash)) return;
         const signature =  (await this.lucid.wallet().signTx(LucidEvolution.CML.Transaction.from_cbor_hex(txHex) )).to_cbor_hex();
         console.log("Signature", signature);
         communicator.sendToLeader( "burnSignature" , signature.toString());
@@ -709,14 +711,16 @@ export class CardanoWatcher{
         return LucidEvolution.makeTxSignBuilder(this.lucid.config().wallet,Ctx);
     }
 
-    async confirmRedemption(redemptionTx : string){
+    async confirmRedemption(redemptionTx : string) : Promise<boolean>{
 
         console.log("Checking Burn redemption", redemptionTx);
         const tx = await this.mongo.collection("burn").findOne({ redemptionTx: redemptionTx});
         const tip = await this.getTip();
         if(!tx) return false;
         const confirmations = tip.height - tx.height;
-        return  confirmations>=  coordinator.config.finality.cardano;
+        const redemptionConfirmed =  confirmations>=  coordinator.config.finality.cardano;
+        console.log("Redemption confirmed", redemptionConfirmed);
+        return redemptionConfirmed;
     }
 
     checkTransaction(txString : string){

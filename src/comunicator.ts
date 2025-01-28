@@ -717,18 +717,25 @@ export class Communicator {
              await coordinator.newBurnSignature(signature);
             }catch(err){
                 console.log("Error importing burn-transaction signature", err);
+                this.applyPunitveMeasures(this.peers[index], `Error importing burn-transaction signature: ${err}`);
             }
         });
 
         socket.on('newRedemSignature', async (data : {sig : string}) => {
+            try{
             if (!InputValidator.isValidString(data.sig)) {
                 console.log('Invalid new redemption signature data');
+                this.applyPunitveMeasures(this.peers[index], `Invalid new redemption signature data: ${data.sig}`);
                 return;
             }
 
             console.log("Redemption signature received", data, "from")
             if(this.peers[this.Iam].state !== NodeStatus.Leader) return;
-            coordinator.newRedemptionSignature(data.sig);
+            await coordinator.newRedemptionSignature(data.sig);
+            }catch(err){
+                console.log("Error importing new redemption signature", err);
+                this.applyPunitveMeasures(this.peers[index], `Error importing new redemption signature: ${err}`);
+            }
         });
 
         socket.on('signatureResponse',async (data : {txId: string, signature: string}) => {
@@ -745,6 +752,7 @@ export class Communicator {
             const pendingTx = this.transactionsBuffer.find((tx) => tx.txId === data.txId);
             const signatureInfo = ADAWatcher.decodeSignature(data.signature);
             if (!signatureInfo.witness.vkeywitnesses().get(0).vkey().verify( Buffer.from(pendingTx.tx.toHash(), 'hex'), signatureInfo.witness.vkeywitnesses().get(0).ed25519_signature())){
+                this.applyPunitveMeasures(this.peers[index], `Invalid signature for Cardano transaction txId: ${data.txId}, type: ${pendingTx.type}`);
                 console.log("Invalid signature");
                 return;
             }
@@ -997,6 +1005,7 @@ export class Communicator {
             console.log("Error sending to leader", err);
         }
     }
+    
 
     private validateStateTransition(currentState: NodeStatus, newState: NodeStatus): boolean {
         const validTransitions = {

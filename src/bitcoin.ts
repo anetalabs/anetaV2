@@ -147,7 +147,7 @@ export class BitcoinWatcher{
         return isSynced;
     }
     
-    psbtFromHex = (hex: string) => {
+    psbtFromHex = (hex: string) : bitcoin.Psbt => {
         return bitcoin.Psbt.fromHex(hex, {network : bitcoin.networks[this.config.network] });
     }
 
@@ -382,7 +382,7 @@ export class BitcoinWatcher{
     }
 
 
-    checkTransaction(tx: bitcoin.Psbt){
+    checkTransaction(tx: bitcoin.Psbt) : boolean{
         const txb = tx;
         // I want the utxos from all the addresses
 
