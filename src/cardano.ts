@@ -12,6 +12,13 @@ import {  BTCWatcher, communicator, coordinator } from "./index.js";
 
 export const METADATA_TAG = 85471236584;
 
+interface QueueItem{
+    txHash: string;
+    index: number;
+    completed: Date | undefined;
+    created: Date;
+}
+
 export class CardanoWatcher{
     private mongo: Db;
     private utxos : LucidEvolution.UTxO[] = [];
@@ -27,10 +34,10 @@ export class CardanoWatcher{
     private config: cardanoConfig;
     private UintArrayAddress : Uint8Array;
     private redemptionRequests: redemptionRequest[] = [];   
-    private rejectionQueue: {txHash: string, index: number  , completed: Date | undefined , created: Date}[] = [];
-    private confescationQueue: {txHash: string, index: number ,  completed: Date | undefined , created: Date}[] = [];
-    private mintQueue: {txHash: string, index: number , targetAddress : string , completed: Date | undefined , created: Date}[] = [];
-    private burnQueue: {txHash: string, index: number , completed: Date | undefined , created: Date }[] = [];
+    private rejectionQueue: QueueItem[] = [];
+    private confescationQueue: QueueItem[] = [];
+    private mintQueue: QueueItem[] = [];
+    private burnQueue: QueueItem[] = [];
 
     constructor(config: cardanoConfig, secrets: secretsConfig, prorocolConfig: protocolConfig){
 
@@ -217,7 +224,6 @@ export class CardanoWatcher{
         // check the rejection queue for the request
         let requestTxHash = txDetails.inputs[0].transaction_id;
         let requestIndex = Number(txDetails.inputs[0].index);
-        console.log("Signing Rejection", requestTxHash, requestIndex, txDetails, txDetails.outputs, this.rejectionQueue);
         const requestListing = this.rejectionQueue.find((request) => request.txHash === requestTxHash && request.index === requestIndex);
         if(!requestListing) throw new Error("Request not found in rejection queue");
         const amIaSigner = txDetails.required_signers.some(async (signature : string) => signature === this.myKeyHash);
@@ -381,10 +387,11 @@ export class CardanoWatcher{
                               Object.keys(txDetails.mint[this.cBTCPolicy]).length === 1 &&  
                               BigInt(txDetails.mint[this.cBTCPolicy][this.cBtcHex]) === request.decodedDatum.amount;
             const inputsClean = (txDetails.inputs.length === 1 && txDetails.inputs[0].transaction_id === request.txHash && Number(txDetails.inputs[0].index) ===  Number(request.outputIndex));
-            txDetails.outputs.forEach((output) => {
-                if (output.AlonzoFormatTxOut.address !== requestListing.targetAddress)
+            txDetails.outputs.forEach(async (output) => {
+                if (output.AlonzoFormatTxOut.address !== await this.getUtxoSender(request.txHash, request.outputIndex))
                 throw new Error("Invalid Output Address");
             });
+            
             const withdrawalsClean = txDetails.withdrawals === null;
             const paymentComplete = BTCWatcher.btcToSat(total) >= coordinator.calculatePaymentAmount(request, utxos.length);
             if (!requestListing.completed && mintClean && inputsClean &&  withdrawalsClean && paymentComplete ){
@@ -456,7 +463,7 @@ export class CardanoWatcher{
             }catch(e){
                 console.log(e);
         }}else{
-            this.mintQueue.push({txHash, index , targetAddress: await this.getUtxoSender(txHash, index), completed : undefined, created: new Date()});                
+            this.mintQueue.push({txHash, index , completed : undefined, created: new Date()});                
         }
     }
 
@@ -556,7 +563,24 @@ export class CardanoWatcher{
                 this.rejectionQueue = this.rejectionQueue.filter((req) => req.txHash !== request.txHash && req.index !== request.index);
             }
         });
-    
+        this.confescationQueue.forEach((request) => {
+            const index = requests.findIndex((utxo) => utxo.txHash === request.txHash && utxo.outputIndex === request.index);
+            if(index === -1){
+                this.confescationQueue = this.confescationQueue.filter((req) => req.txHash !== request.txHash && req.index !== request.index);
+            }
+        });
+        this.mintQueue.forEach((request) => {
+            const index = requests.findIndex((utxo) => utxo.txHash === request.txHash && utxo.outputIndex === request.index);
+            if(index === -1){
+                this.mintQueue = this.mintQueue.filter((req) => req.txHash !== request.txHash && req.index !== request.index);
+            }
+        });
+        this.burnQueue.forEach((request) => {
+            const index = requests.findIndex((utxo) => utxo.txHash === request.txHash && utxo.outputIndex === request.index);
+            if(index === -1){
+                this.burnQueue = this.burnQueue.filter((req) => req.txHash !== request.txHash && req.index !== request.index);
+            }
+        });
     }
 
     async loadUtxos(){
