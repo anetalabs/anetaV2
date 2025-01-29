@@ -147,7 +147,7 @@ export class BitcoinWatcher{
         return isSynced;
     }
     
-    psbtFromHex = (hex: string) : bitcoin.Psbt => {
+    psbtFromHex = (hex: string) => {
         return bitcoin.Psbt.fromHex(hex, {network : bitcoin.networks[this.config.network] });
     }
 
