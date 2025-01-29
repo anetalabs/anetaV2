@@ -58,6 +58,7 @@ export enum NodeStatus {
 }
 
 export type protocolConfig = {
+    redemptionTimeoutMinutes: number
     redemptionMargin: number
     btcNetworkFeeMultiplyer: number
     fixedFee: number

@@ -138,24 +138,16 @@ export class CardanoWatcher{
         
         try{
             if(communicator.amILeader()){
-                console.log("Burning", requests);
                 const MultisigDescriptorSchema = LucidEvolution.Data.Object({ 
                     list: LucidEvolution.Data.Array(LucidEvolution.Data.Bytes()),
                     m: LucidEvolution.Data.Integer(),
                     });
                     
                 const metadata = splitIntoChunks(redemptionTx, 64);
-                console.log("Metadata", metadata);
                 type MultisigDescriptor = LucidEvolution.Data.Static<typeof MultisigDescriptorSchema>;
                 const MultisigDescriptor = MultisigDescriptorSchema as unknown as MultisigDescriptor; 
                 
-                console.log("Config UTxO",this.configUtxo)
-                const multisig = LucidEvolution.Data.from(this.configUtxo.datum, MultisigDescriptor);
-                console.log(multisig);
                 
-                const openRequests =await this.lucid.config().provider.getUtxos(this.address);
-                const request = requests;
-                console.log(request)
                 const assets = {} 
                 assets[this.cBTCPolicy + this.cBtcHex] = -requests.reduce((acc, request) => acc + BigInt(request.assets[this.cBTCPolicy +  this.cBtcHex]), 0n);
                 

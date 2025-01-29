@@ -86,8 +86,9 @@ export class BitcoinWatcher{
         }, 5000); // Check every 5 seconds
     }
 
-    getHeight = async () => {
+    getHeight = async () : Promise<number> => {
         const height = await this.client.getBlockCount()
+        console.log("BTC Height", height)
         return height
     }
 
@@ -222,7 +223,7 @@ export class BitcoinWatcher{
         }
     }
 
-    craftRedemptionTransaction = async (requests: redemptionRequest[] , payByChild: string = "") : Promise<[bitcoin.Psbt , redemptionRequest[] ]> => {
+    craftRedemptionTransaction = async (requests: redemptionRequest[] , payByChild: string | null = null) : Promise<[bitcoin.Psbt , redemptionRequest[] ]> => {
         while ( this.isSynced === false) {
             await new Promise((resolve) => setTimeout(resolve, 5000));
         }
@@ -233,7 +234,7 @@ export class BitcoinWatcher{
             const nonWitnessData = 41;
             const witnessData = this.topology.m * 73 + this.topology.topology.length * 34 + 3 + this.topology.m + this.topology.topology.length * 34 + 1;
             const inputSize = nonWitnessData + Math.ceil(witnessData / 4);
-            const utxos = payByChild === "" ? [this.payByChildUtxo(payByChild)] : this.utxos[this.utxos.length - 1 ].utxos;
+            const utxos = payByChild !== null ? [this.payByChildUtxo(payByChild)] : this.utxos[this.utxos.length - 1 ].utxos;
             console.log("crafting redemption transaction");
             const redeemScript = Buffer.from(this.getVaultRedeemScript(), 'hex');
             for (let i = 0; i < utxos.length; i++) {
@@ -324,9 +325,7 @@ export class BitcoinWatcher{
         const txb = bitcoin.Psbt.fromHex(tx, {network : bitcoin.networks[this.config.network] });
         const txc = ADAWatcher.txCompleteFromString(burnTx);
         const [txDetails, cTx] = ADAWatcher.decodeTransaction(burnTx);
-        console.log(cTx.auxiliary_data().metadata().get(BigInt(METADATA_TAG)).to_json_value(), cTx.auxiliary_data().metadata().get(BigInt(METADATA_TAG)).to_json() , cTx.auxiliary_data().metadata().get(BigInt(METADATA_TAG)))
         const medatadata = JSON.parse(cTx.auxiliary_data().metadata().get(BigInt(METADATA_TAG)).to_json());
-        console.log(medatadata)
         const txString = medatadata.list.map((substring) =>  substring.string ).join("")
         let redemptionRequests =  ADAWatcher.getRedemptionRequests();
            // check than no 2 requests are the same by txHash and outputIndex
@@ -341,8 +340,7 @@ export class BitcoinWatcher{
         const burenedRequests = txDetails.inputs.map((input) => {
             return input.transaction_id + input.index;
         });
-        console.log(txDetails.outputs[0])
-        console.log(txDetails.outputs[0], txDetails.outputs)
+
         if(txDetails.outputs.length !== 1 || txDetails.outputs[0].AlonzoFormatTxOut.address !== coordinator.config.adminAddress || Object.keys(txDetails.outputs[0].AlonzoFormatTxOut.amount.multiasset).length !== 0 ) 
             throw new Error('Invalid burn transaction Output');
         
@@ -362,15 +360,14 @@ export class BitcoinWatcher{
             throw new Error('Invalid burn transaction Input');
         
 
-        console.log(Object.keys(txDetails.mint).length,Object.keys(txDetails.mint[ADAWatcher.getCBtcPolicy()]).length,txDetails.mint[ADAWatcher.getCBtcPolicy()][ADAWatcher.getCBtcHex()], -totalBurn )
         
         if(Object.keys(txDetails.mint).length !== 1 || Object.keys(txDetails.mint[ADAWatcher.getCBtcPolicy()]).length !== 1 || Number(txDetails.mint[ADAWatcher.getCBtcPolicy()][ADAWatcher.getCBtcHex()]) !== -totalBurn)
                 throw new Error('Invalid burn transaction mint');
             
-            console.log("redemptionRequests", redemptionRequests)
-            const ValidRedemptionScript = this.getVaultRedeemScript()
-            txb.data.inputs.forEach((input) => {
-                if(input.witnessScript.toString('hex') !== ValidRedemptionScript) throw new Error('Invalid redemption transaction Input');
+        console.log("redemptionRequests", redemptionRequests)
+        const ValidRedemptionScript = this.getVaultRedeemScript()
+        txb.data.inputs.forEach((input) => {
+            if(input.witnessScript.toString('hex') !== ValidRedemptionScript) throw new Error('Invalid redemption transaction Input');
         });
 
         txb.txOutputs.forEach((output) => {
@@ -674,7 +671,7 @@ export class BitcoinWatcher{
             const height = await this.getHeight()
             await this.client.command('scantxoutset', 'abort', descriptors)
             const resault =  await this.client.command('scantxoutset', 'start', descriptors)
-            const utxosRaw =  resault.unspents.map((utxo) => Object.assign( {}, utxo)).filter((utxo) => utxo.height <= height - coordinator.config.finality.bitcoin);
+            const utxosRaw =  resault.unspents.map((utxo) => Object.assign( {}, utxo)).filter((utxo) => true);
             // Organize utxos by address
             const utxosByAddress = utxosRaw.reduce((acc, utxo) => {
                 const address = utxo.desc.split('(')[1].split(')')[0];

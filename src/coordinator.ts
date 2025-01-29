@@ -79,7 +79,8 @@ export class Coordinator{
         //console.log("Mint Requests", mintRequests);
         //console.log("Redemption Requests", redemptionRequests);
         this.paymentPaths.forEach( (paymentPath, index) => {
-            if(paymentPath.state === state.commited && mintRequests.find((mintRequest) => requestId(mintRequest) === requestId(paymentPath.request)) === undefined){
+            const utxos = BTCWatcher.getUtxosByIndex(paymentPath.index);
+            if(paymentPath.state === state.commited && mintRequests.find((mintRequest) => requestId(mintRequest) === requestId(paymentPath.request)) === undefined && utxos.length === 0){
                 console.log("Payment path not found, reopening");
                 paymentPath = {state: state.open, index: paymentPath.index, address: BTCWatcher.getAddress(paymentPath.index)};
                 this.paymentPaths[index] = paymentPath;
@@ -153,6 +154,7 @@ export class Coordinator{
         }
         
     }
+
 
     payByChildTime(redemptions: redemptionController[]): boolean{
         const completedRedemption = redemptions.find((redemption) => redemption.state === redemptionState.completed);
@@ -315,6 +317,7 @@ export class Coordinator{
         await this.getOpenRequests(); 
         await this.checkTimeout(); 
         await this.checkBurn(); 
+        await this.checkPayments()
             await this.completeRedemption();
         }catch(e){
             console.log("Error in onNewCardanoBlock", e);
@@ -532,7 +535,7 @@ export class Coordinator{
     }
     
     async checkPayments(){
-        this.paymentPaths.forEach((path, index) => {
+        this.paymentPaths.forEach(async (path, index) => {
             let payment = BTCWatcher.getUtxosByIndex(index);
             if(path.state <= state.completed && payment.length > 0){
                 payment.forEach(async (utxo) => {
@@ -551,7 +554,8 @@ export class Coordinator{
             }
          
             if (path.state === state.commited && payment.length > 0){
-                let sum = BTCWatcher.btcToSat(payment.reduce((acc, utxo) => acc + utxo.amount, 0));
+                const height = await BTCWatcher.getHeight();
+                let sum = BTCWatcher.btcToSat(payment.reduce((acc, utxo) => height >= utxo.height + this.config.finality.bitcoin ? acc + utxo.amount : acc, 0));
                 const totalToPay = this.calculatePaymentAmount(path.request);
                 
                 console.log(`checking payment for path ${index} 
@@ -565,8 +569,8 @@ export class Coordinator{
                     console.log("Payment found");
                     path.state = state.payed;
                     path.payment = payment;
-                    this.paymentPathsDb.findOneAndUpdate({ index }, { $set: this.paymentPaths[index] }, { upsert: true });
-                    ADAWatcher.completeMint(path.request.txHash, path.request.outputIndex, payment);
+                    // this.paymentPathsDb.findOneAndUpdate({ index }, { $set: this.paymentPaths[index] }, { upsert: true });
+                    // ADAWatcher.completeMint(path.request.txHash, path.request.outputIndex, payment);
                 }
             }
             
