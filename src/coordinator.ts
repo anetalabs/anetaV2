@@ -388,20 +388,21 @@ export class Coordinator{
             return ;
         }
         
-        const psbt = BTCWatcher.psbtFromHex(redemption.redemptionSignatures)
+        let psbt = BTCWatcher.psbtFromHex(redemption.redemptionSignatures)
 
-        if (psbt.data.inputs[0].partialSig.length >= BTCWatcher.getM()) return;
-        const tx = BTCWatcher.combine(psbt, signature);
+        if (!(psbt.data.inputs[0].partialSig.length >= BTCWatcher.getM())) {
+            const tx = BTCWatcher.combine(psbt, signature);
+            redemption.redemptionSignatures = tx.toHex();
+            await this.redemptionDb.findOneAndUpdate({ index : redemption.index ,alternative : redemption.alternative  }, {$set: redemption});
+            psbt = tx;
+        }
 
-        redemption.redemptionSignatures = tx.toHex();
-
-        await this.redemptionDb.findOneAndUpdate({ index : redemption.index ,alternative : redemption.alternative  }, {$set: redemption});
-        if(tx.data.inputs[0].partialSig.length >= BTCWatcher.getM()){
-            tx.finalizeAllInputs();
-            const redemptionTxId = await BTCWatcher.completeAndSubmit(tx);
+        if(psbt.data.inputs[0].partialSig.length >= BTCWatcher.getM()){
+            psbt.finalizeAllInputs();
+            const redemptionTxId = await BTCWatcher.completeAndSubmit(psbt);
             redemption.state = redemptionState.completed;
             redemption.redemptionTxId = redemptionTxId;
-            redemption.redemptionTx = tx.toHex();
+            redemption.redemptionTx = psbt.toHex();
             await this.redemptionDb.findOneAndUpdate({ index : redemption.index, alternative : redemption.alternative }, {$set: redemption});
             communicator.broadcast("updateRedemptionToComplete", {  tx: redemption.redemptionTx});
 
