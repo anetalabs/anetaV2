@@ -86,6 +86,7 @@ export class Coordinator{
                 this.paymentPaths[index] = paymentPath;
                 this.paymentPathsDb.deleteOne({ index: paymentPath.index });
             }
+            // TODO Target here for dangling  BTC Payment Paths 
         });
 
         try{
@@ -318,7 +319,8 @@ export class Coordinator{
         await this.checkTimeout(); 
         await this.checkBurn(); 
         await this.checkPayments()
-            await this.completeRedemption();
+        await this.checkRedemption();
+        await this.completeRedemption();
         }catch(e){
             console.log("Error in onNewCardanoBlock", e);
         }
@@ -472,7 +474,6 @@ export class Coordinator{
             if(await ADAWatcher.isBurnConfirmed(redemption.burningTransaction.txId)){
                     await this.redemptionDb.findOneAndUpdate({ index : redemption.index, alternative : redemption.alternative }, {$set:  { state: redemptionState.burned }}, {upsert: true});
                     await this.redemptionDb.updateMany({ index : redemption.index, state : redemptionState.forged  }, { $set: { state: redemptionState.cancelled } });
-                    this.checkRedemption();
                     return; 
                 }
             

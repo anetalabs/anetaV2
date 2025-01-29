@@ -143,9 +143,10 @@ export class Communicator {
     private networkStatus : {peers: any, leaderTimeout: number};
     private _connectingPeers: Set<number>;
     private signatureTimeouts: Map<string, { startTime: number, attempts: number }> = new Map();
-    private static readonly SIGNATURE_TIMEOUT = 0.5 * 60 * 1000; // 5 minutes
-    private static readonly PENALTY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
-    private static readonly MAX_SIGNATURE_ATTEMPTS = 3;
+    private static readonly SIGNATURE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+    private static readonly BTC_SIGNATURE_TIMEOUT = 20 * 60 * 1000; // 20 minutes
+    private static readonly PENALTY_TIMEOUT = 3 * 60 * 60 * 1000; // 3 hours
+    private static readonly MAX_SIGNATURE_ATTEMPTS = 5;
     constructor(topology: topology, secrets: secretsConfig , port: number ) {
         this.heartbeat = this.heartbeat.bind(this);
         this.topology = topology;
@@ -853,13 +854,13 @@ export class Communicator {
             });
 
             this.btcTransactionsBuffer.forEach((tx) => {
-                if(node.state === NodeStatus.Follower && node.outgoingConnection && tx.status === "pending"){
+                if(node.state === NodeStatus.Follower && node.outgoingConnection && tx.status === "pending" && tx.type !== "consolidation"){
                     // Track signature request
                     const sigKey = `${tx.tx.toHex()}-${node.keyHash}`;
                     const timeoutInfo = this.signatureTimeouts.get(sigKey) || { startTime: Date.now(), attempts: 0 };
                     
                     // Check if we've been waiting too long for this signature
-                    if (timeoutInfo.startTime + Communicator.SIGNATURE_TIMEOUT < Date.now()) {
+                    if (timeoutInfo.startTime + Communicator.BTC_SIGNATURE_TIMEOUT < Date.now()) {
                         console.log(`BTC signature timeout for node ${node.id}`);
                         
                         // Increment attempts and reset timer
