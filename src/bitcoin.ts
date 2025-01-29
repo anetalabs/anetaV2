@@ -218,7 +218,7 @@ export class BitcoinWatcher{
             txid: tx.getId(),
             vout: tx.outs.length - 1,    
             scriptPubKey: tx.outs[tx.outs.length - 1].script.toString('hex'),
-            amount: tx.outs[tx.outs.length - 1].value,
+            amount: this.satToBtc(tx.outs[tx.outs.length - 1].value), 
             height: 0
         }
     }
@@ -235,6 +235,7 @@ export class BitcoinWatcher{
             const witnessData = this.topology.m * 73 + this.topology.topology.length * 34 + 3 + this.topology.m + this.topology.topology.length * 34 + 1;
             const inputSize = nonWitnessData + Math.ceil(witnessData / 4);
             const utxos = payByChild !== null ? [this.payByChildUtxo(payByChild)] : this.utxos[this.utxos.length - 1 ].utxos;
+
             console.log("crafting redemption transaction");
             const redeemScript = Buffer.from(this.getVaultRedeemScript(), 'hex');
             for (let i = 0; i < utxos.length; i++) {
@@ -369,6 +370,7 @@ export class BitcoinWatcher{
         txb.data.inputs.forEach((input) => {
             if(input.witnessScript.toString('hex') !== ValidRedemptionScript) throw new Error('Invalid redemption transaction Input');
         });
+        
 
         txb.txOutputs.forEach((output) => {
             if(output.address !== this.getVaultAddress())
@@ -660,10 +662,9 @@ export class BitcoinWatcher{
         return fee.feerate ? fee.feerate : this.config.falbackFeeRate;
     }
 
-    getUtxos = async () => {
-        try{
 
-            
+    getUtxos = async () => {
+        try{           
             if (this.gettingUtxos) return;
             this.gettingUtxos = true;
             const descriptors = this.address.map(address => ({ 'desc': `addr(${address})`, 'range': 1000 }));
@@ -680,8 +681,7 @@ export class BitcoinWatcher{
                 }
                 acc[address].push(utxo);
                 return acc;
-            }, {});
-        
+            }, {});        
         
         this.utxos = this.address.map((address, index) => ({
             index,

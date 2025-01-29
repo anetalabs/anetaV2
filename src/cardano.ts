@@ -699,7 +699,7 @@ export class CardanoWatcher{
         }
        const tip = await this.getTip();
        const confirmations = tip.height - match.height;
-       return  confirmations>=  coordinator.config.finality.cardano;
+       return  confirmations >=  coordinator.config.finality.cardano;
     }
 
     
@@ -765,21 +765,7 @@ export class CardanoWatcher{
     }
 
 
-    
-    async getBurnByRedemptionTx(redemptionTx: string){
-        console.log("Checking Burn", redemptionTx);
-       // const hash = await this.(redemptionTx);
-        const tx = await this.mongo.collection("burn").findOne({ redemptionTx});
-        const tip = await this.getTip();
-        if(!tx) return false;
-        const confirmations = tip.height - tx.height;
-        if(confirmations>= coordinator.config.finality.cardano){
-            return tx;
-        }else{
-            return false;
-        }
-    }
-    
+
     async handleNewBlock(block) : Promise<Boolean>{
         try{
             let tip = await this.mongo.collection("height").findOne({type: "top"});

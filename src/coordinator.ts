@@ -160,7 +160,7 @@ export class Coordinator{
         const completedRedemption = redemptions.find((redemption) => redemption.state === redemptionState.completed);
         return completedRedemption !== undefined && completedRedemption.completedTime !== undefined && Date.now() - completedRedemption.completedTime > this.config.redemptionTimeoutMinutes * 60000;
     }
-
+    
     async checkTimeout(){
         this.paymentPaths.forEach((path, index) => {
             if (path.state === state.commited && Date.now() - path.openTime > this.config.mintTimeoutMinutes * 60000){
@@ -222,7 +222,7 @@ export class Coordinator{
                 if(newRedemptionState.index === currentRedemptionState.index + 1) {
                     if(!redemptions.some(redemption => (redemption.state === redemptionState.finalized)) && !this.payByChildTime(redemptions)  ) throw new Error("Redemption already in progress");
                 }else if(newRedemptionState.index === currentRedemptionState.index && newRedemptionState.alternative !== currentRedemptionState.alternative +1 ) {
-                    if(currentRedemptionState.state === redemptionState.forged){
+                    if(currentRedemptionState.state === redemptionState.forged ){
                         if ( communicator.checkAdaQuorum(ADAWatcher.getTxSigners(currentRedemptionState.burningTransaction.tx) )){
                             throw new Error("Redemption already forged, waiting for burn signatures");
                     }
@@ -250,7 +250,7 @@ export class Coordinator{
             let index = 0;
             let alternative = 0;
   
-            if(currentRedemptions.length !== 0 && this.payByChildTime(currentRedemptions)){
+            if(currentRedemptions.length !== 0){
                 index = currentRedemptions[0].index;
                 if(currentRedemptions[0].state === redemptionState.forged){ 
                 if ( communicator.checkAdaQuorum(ADAWatcher.getTxSigners(currentRedemptions[0].burningTransaction.tx) )){
@@ -285,7 +285,7 @@ export class Coordinator{
                 },
            };
 
-             
+            console.log("New Redemption", newRedemptionState);
             await this.redemptionDb.findOneAndUpdate({ index : index, alternative: alternative  }, { $set: newRedemptionState }, { upsert: true });
             if(communicator.amILeader) communicator.broadcast("newRedemption", newRedemptionState);
         }catch(e){
@@ -420,6 +420,7 @@ export class Coordinator{
             psbt.finalizeAllInputs();
             const redemptionTxId = await BTCWatcher.completeAndSubmit(psbt);
             redemption.state = redemptionState.completed;
+            redemption.completedTime = Date.now();
             redemption.redemptionTxId = redemptionTxId;
             redemption.redemptionTx = psbt.toHex();
             await this.redemptionDb.findOneAndUpdate({ index : redemption.index, alternative : redemption.alternative }, {$set: redemption});
