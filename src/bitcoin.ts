@@ -210,7 +210,19 @@ export class BitcoinWatcher{
         
     // }
 
-    craftRedemptionTransaction = async (requests: redemptionRequest[]) : Promise<[bitcoin.Psbt , redemptionRequest[] ]> => {
+    payByChildUtxo = (payByChild: string) : utxo => {
+        const txb = bitcoin.Psbt.fromHex(payByChild, {network : bitcoin.networks[this.config.network] });
+        const tx = txb.extractTransaction();
+        return {
+            txid: tx.getId(),
+            vout: tx.outs.length - 1,    
+            scriptPubKey: tx.outs[tx.outs.length - 1].script.toString('hex'),
+            amount: tx.outs[tx.outs.length - 1].value,
+            height: 0
+        }
+    }
+
+    craftRedemptionTransaction = async (requests: redemptionRequest[] , payByChild: string = "") : Promise<[bitcoin.Psbt , redemptionRequest[] ]> => {
         while ( this.isSynced === false) {
             await new Promise((resolve) => setTimeout(resolve, 5000));
         }
@@ -221,7 +233,7 @@ export class BitcoinWatcher{
             const nonWitnessData = 41;
             const witnessData = this.topology.m * 73 + this.topology.topology.length * 34 + 3 + this.topology.m + this.topology.topology.length * 34 + 1;
             const inputSize = nonWitnessData + Math.ceil(witnessData / 4);
-            const utxos = this.utxos[this.utxos.length - 1 ].utxos;
+            const utxos = payByChild === "" ? [this.payByChildUtxo(payByChild)] : this.utxos[this.utxos.length - 1 ].utxos;
             console.log("crafting redemption transaction");
             const redeemScript = Buffer.from(this.getVaultRedeemScript(), 'hex');
             for (let i = 0; i < utxos.length; i++) {
@@ -268,7 +280,6 @@ export class BitcoinWatcher{
         } catch (e) {
             console.log(e)
         }
-
     }
 
     async checkFinalizedRedemptionTx (redemption : redemptionController): Promise <boolean> {

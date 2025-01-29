@@ -128,22 +128,35 @@ export class Coordinator{
 
         if (redemptionRequests.length > 0 ) {
             const redemptions = await this.getCurrentRedemption();
-            console.log("Redemptions", redemptions);
             const redemptionAvaiable = redemptions.length === 0 || redemptions.some((redemption) => [ redemptionState.finalized , redemptionState.found].includes(redemption.state));
             console.log("Redemption available", redemptionAvaiable, redemptions.length === 0, redemptions.some((redemption) => [ redemptionState.finalized , redemptionState.found].includes(redemption.state) ));
-            if(redemptionAvaiable)
-            try {
-                if(communicator.amILeader()){
-                    let [currentTransaction, requests] = await BTCWatcher.craftRedemptionTransaction(redemptionRequests);
-                    await this.newRedemption(currentTransaction, requests);
-                }else{
-                    communicator.sendToLeader("queryRedemption");
+            if(redemptionAvaiable){
+                try {
+                    if(communicator.amILeader()){
+                        let [currentTransaction, requests] = await BTCWatcher.craftRedemptionTransaction(redemptionRequests);
+                        await this.newRedemption(currentTransaction, requests);
+                    }else{
+                        communicator.sendToLeader("queryRedemption");
+                    }
+                } catch (e) {
+                    console.log("Error crafting redemption transaction", e);
                 }
-            } catch (e) {
-                console.log("Error crafting redemption transaction", e);
+            }else {
+                if(this.payByChildTime(redemptions) && communicator.amILeader()){
+                    console.log("Redemption timed out, using Pay by Child");
+                    const completedRedemption = redemptions.find((redemption) => redemption.state === redemptionState.completed);
+
+                    let [currentTransaction, requests] = await BTCWatcher.craftRedemptionTransaction(redemptionRequests, completedRedemption.redemptionTx);
+                    await this.newRedemption(currentTransaction, requests);
+                }
             }
         }
         
+    }
+
+    payByChildTime(redemptions: redemptionController[]): boolean{
+        const completedRedemption = redemptions.find((redemption) => redemption.state === redemptionState.completed);
+        return completedRedemption !== undefined && completedRedemption.completedTime !== undefined && Date.now() - completedRedemption.completedTime > this.config.redemptionTimeoutMinutes * 60000;
     }
 
     async checkTimeout(){
@@ -205,7 +218,7 @@ export class Coordinator{
                 }
                 
                 if(newRedemptionState.index === currentRedemptionState.index + 1) {
-                    if(! redemptions.some(redemption => (redemption.state === redemptionState.finalized))  ) throw new Error("Redemption already in progress");
+                    if(!redemptions.some(redemption => (redemption.state === redemptionState.finalized)) && !this.payByChildTime(redemptions)  ) throw new Error("Redemption already in progress");
                 }else if(newRedemptionState.index === currentRedemptionState.index && newRedemptionState.alternative !== currentRedemptionState.alternative +1 ) {
                     if(currentRedemptionState.state === redemptionState.forged){
                         if ( communicator.checkAdaQuorum(ADAWatcher.getTxSigners(currentRedemptionState.burningTransaction.tx) )){
@@ -234,26 +247,28 @@ export class Coordinator{
 
             let index = 0;
             let alternative = 0;
-            if(currentRedemptions.length !== 0){
+  
+            if(currentRedemptions.length !== 0 && this.payByChildTime(currentRedemptions)){
                 index = currentRedemptions[0].index;
                 if(currentRedemptions[0].state === redemptionState.forged){ 
-                    if ( communicator.checkAdaQuorum(ADAWatcher.getTxSigners(currentRedemptions[0].burningTransaction.tx) )){
-                        throw new Error("Redemption already forged, waiting for burn signatures");
-                    }else{
-                            console.log("Quorum not met, recreating redemption transaction");
-                            alternative = 1 +  currentRedemptions[0].alternative;
-                    }
-                }else if(currentRedemptions[0].state === redemptionState.found){
-                    if(currentRedemptions[0].currentTransaction === currentTransaction.toHex()) {
-                        console.log("Redemption found, updating to forged");
-                    }else {
-                        index += 1;
-                    }
-                    
+                if ( communicator.checkAdaQuorum(ADAWatcher.getTxSigners(currentRedemptions[0].burningTransaction.tx) )){
+                    throw new Error("Redemption already forged, waiting for burn signatures");
                 }else{
-                    index += 1;
-                    if (currentRedemptions[0].state !== redemptionState.finalized ) throw new Error("Redemption already in progress");
+                        console.log("Quorum not met, recreating redemption transaction");
+                        alternative = 1 +  currentRedemptions[0].alternative;
                 }
+            }else if(currentRedemptions[0].state === redemptionState.found){
+                if(currentRedemptions[0].currentTransaction === currentTransaction.toHex()) {
+                    console.log("Redemption found, updating to forged");
+                }else {
+                    index += 1;
+                }
+                
+            }else{
+                index += 1;
+                if (currentRedemptions[0].state !== redemptionState.finalized && !this.payByChildTime(currentRedemptions) ) throw new Error("Redemption already in progress");
+            }
+            
             }
 
         const newRedemptionState : redemptionController = {
@@ -358,6 +373,7 @@ export class Coordinator{
             redemption.redemptionTxId = psbt.extractTransaction().getId();
             redemption.redemptionTx = psbt.toHex();
             redemption.state = redemptionState.completed;
+            redemption.completedTime = Date.now();
             this.redemptionDb.findOneAndUpdate({ index : redemption.index , alternative : redemption.alternative }, {$set: redemption});
 
             this.checkRedemption();

@@ -143,7 +143,8 @@ export interface redemptionController{
   },
   redemptionSignatures?: string,
   redemptionTxId?: string,
-  redemptionTx?: string
+  redemptionTx?: string,
+  completedTime?: number
 }
 
 
