@@ -20,7 +20,6 @@ type addressUtxos = {
 }
 
 
-
 export class BitcoinWatcher{
     private client: BitcoinCore;
     private address: string[];
@@ -391,7 +390,6 @@ export class BitcoinWatcher{
         return true;
     }
 
-
     checkTransaction(tx: bitcoin.Psbt) : boolean{
         const txb = tx;
         // I want the utxos from all the addresses
@@ -598,6 +596,7 @@ export class BitcoinWatcher{
                         value: Math.round(addressUtxos[i].amount * 100_000_000),
                     },
                     witnessScript: redeemScript,
+                    sequence: 0xFFFFFFFD,
                 });
                 const path = "m/44'/0'/0'/0"; // This is the BIP44 path for the first address in the first account of a Bitcoin wallet
                 const node = this.root.derivePath(path);
