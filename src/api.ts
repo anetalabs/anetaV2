@@ -86,6 +86,13 @@ export default class ApiServer {
     this.app.get('/requests', (req, res) => {
       res.json({ requests: coordinator.getOpenRequests() });
     });
+
+    this.app.get('/transactionsBuffer', (req, res) => {
+
+      res.json({ CardanoTransactionsBuffer: communicator.getTransactionsBuffer(),
+              BTCTransactionsBuffer: communicator.getBtcTransactionsBuffer()
+       });
+    });
   }
 
   start(port) {

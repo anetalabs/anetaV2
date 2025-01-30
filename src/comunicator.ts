@@ -366,6 +366,7 @@ export class Communicator {
 
     bitcoinTxToComplete(tx: pendingBitcoinTransaction) {
         if(this.peers[this.Iam].state === NodeStatus.Leader && !this.btcTransactionsBuffer.find((innerTx) => tx.tx.toHex() === innerTx.tx.toHex()) ){
+
             this.btcTransactionsBuffer.push(tx);
             console.log('Bitcoin transaction to complete:', tx);
 
@@ -676,18 +677,20 @@ export class Communicator {
 
             this.btcTransactionsBuffer.forEach((tx) => {
                 try{
+                    if(BTCWatcher.txEqual(tx.tx.toHex(),data) && tx.tx.data.inputs[0].partialSig && tx.tx.data.inputs[0].partialSig.length < this.topology.m){
                         tx.tx = BTCWatcher.combine(tx.tx,data)
                         if(tx.tx.data.inputs[0].partialSig.length >= this.topology.m){
                             tx.status = "completed";
-                            tx.tx.finalizeAllInputs();
-                            BTCWatcher.completeAndSubmit(tx.tx).then((txId) => {
-                                    console.log("Transaction completed and submitted", txId , tx.type);   
-                                    this.transactionsBuffer = this.transactionsBuffer.filter(t => t.txId !== tx.tx.toHex());
-                                    this.signatureTimeouts.delete(`${tx.tx.toHex()}-${this.peers[index].keyHash}`);
-                                }).catch((err) => {
-                                    console.log("Error completing and submitting transaction", err);
-                                });
+                        tx.tx.finalizeAllInputs();
+                        BTCWatcher.completeAndSubmit(tx.tx).then((txId) => {
+                                console.log("Transaction completed and submitted", txId , tx.type);   
+                                this.transactionsBuffer = this.transactionsBuffer.filter(t => t.txId !== tx.tx.toHex());
+                                this.signatureTimeouts.delete(`${tx.tx.toHex()}-${this.peers[index].keyHash}`);
+                            }).catch((err) => {
+                                console.log("Error completing and submitting transaction", err);
+                            });
                         }
+                    }
                 }catch(err){
                     console.log("Signature processing error:", err);
                 }
@@ -854,34 +857,9 @@ export class Communicator {
             });
 
             this.btcTransactionsBuffer.forEach((tx) => {
-                if(node.state === NodeStatus.Follower){
+                if(node.state === NodeStatus.Follower && node.outgoingConnection && tx.status === "pending"){
                     
                     node.outgoingConnection.emit('btcSignatureRequest', { tx : tx.tx.toHex(), type: tx.type});
-                //     if(node.outgoingConnection && tx.status === "pending" && tx.type !== "consolidation"){
-                //         // Track signature request
-                //         const sigKey = `${tx.tx.toHex()}-${node.keyHash}`;
-                //         const timeoutInfo = this.signatureTimeouts.get(sigKey) || { startTime: Date.now(), attempts: 0 };
-                        
-                //         // Check if we've been waiting too long for this signature
-                //         if (timeoutInfo.startTime + Communicator.BTC_SIGNATURE_TIMEOUT < Date.now()) {
-                //             console.log(`BTC signature timeout for node ${node.id}`);
-                            
-                //             // Increment attempts and reset timer
-                //             timeoutInfo.attempts++;
-                //             timeoutInfo.startTime = Date.now();
-                            
-                //             if (timeoutInfo.attempts >= Communicator.MAX_SIGNATURE_ATTEMPTS) {
-                //                 console.log(`Node ${node.id} failed to sign BTC tx after ${Communicator.MAX_SIGNATURE_ATTEMPTS} attempts`);
-                //                 // Remove the transaction from buffer
-                //                 this.btcTransactionsBuffer = this.btcTransactionsBuffer.filter(t => t.tx.toHex() !== tx.tx.toHex());
-                //                 this.signatureTimeouts.delete(sigKey);
-                //                 this.applyPunitveMeasures(node, `BTC Signature timeout, txId: ${tx.tx.toHex()}, type: ${tx.type}`);
-                //                 return;
-                //             }
-                //         }
-                    
-                //     // Update timeout tracking
-                //     }
                     
                 }
             });
@@ -1010,6 +988,13 @@ export class Communicator {
         }
     }
     
+    getBtcTransactionsBuffer(){
+        return this.btcTransactionsBuffer;
+    }
+
+    getTransactionsBuffer(){
+        return this.transactionsBuffer;
+    }
 
     private validateStateTransition(currentState: NodeStatus, newState: NodeStatus): boolean {
         const validTransitions = {
