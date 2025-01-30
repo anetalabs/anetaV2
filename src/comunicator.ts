@@ -854,36 +854,39 @@ export class Communicator {
             });
 
             this.btcTransactionsBuffer.forEach((tx) => {
-                if(node.state === NodeStatus.Follower && node.outgoingConnection && tx.status === "pending" && tx.type !== "consolidation"){
-                    // Track signature request
-                    const sigKey = `${tx.tx.toHex()}-${node.keyHash}`;
-                    const timeoutInfo = this.signatureTimeouts.get(sigKey) || { startTime: Date.now(), attempts: 0 };
+                if(node.state === NodeStatus.Follower){
                     
-                    // Check if we've been waiting too long for this signature
-                    if (timeoutInfo.startTime + Communicator.BTC_SIGNATURE_TIMEOUT < Date.now()) {
-                        console.log(`BTC signature timeout for node ${node.id}`);
-                        
-                        // Increment attempts and reset timer
-                        timeoutInfo.attempts++;
-                        timeoutInfo.startTime = Date.now();
-                        
-                        if (timeoutInfo.attempts >= Communicator.MAX_SIGNATURE_ATTEMPTS) {
-                            console.log(`Node ${node.id} failed to sign BTC tx after ${Communicator.MAX_SIGNATURE_ATTEMPTS} attempts`);
-                            // Remove the transaction from buffer
-                            this.btcTransactionsBuffer = this.btcTransactionsBuffer.filter(t => t.tx.toHex() !== tx.tx.toHex());
-                            this.signatureTimeouts.delete(sigKey);
-                            this.applyPunitveMeasures(node, `BTC Signature timeout, txId: ${tx.tx.toHex()}, type: ${tx.type}`);
-                            return;
-                        }
-                    }
-                    
-                    // Update timeout tracking
-                    this.signatureTimeouts.set(sigKey, timeoutInfo);
-                    
-                    // Request signature
                     node.outgoingConnection.emit('btcSignatureRequest', { tx : tx.tx.toHex(), type: tx.type});
+                //     if(node.outgoingConnection && tx.status === "pending" && tx.type !== "consolidation"){
+                //         // Track signature request
+                //         const sigKey = `${tx.tx.toHex()}-${node.keyHash}`;
+                //         const timeoutInfo = this.signatureTimeouts.get(sigKey) || { startTime: Date.now(), attempts: 0 };
+                        
+                //         // Check if we've been waiting too long for this signature
+                //         if (timeoutInfo.startTime + Communicator.BTC_SIGNATURE_TIMEOUT < Date.now()) {
+                //             console.log(`BTC signature timeout for node ${node.id}`);
+                            
+                //             // Increment attempts and reset timer
+                //             timeoutInfo.attempts++;
+                //             timeoutInfo.startTime = Date.now();
+                            
+                //             if (timeoutInfo.attempts >= Communicator.MAX_SIGNATURE_ATTEMPTS) {
+                //                 console.log(`Node ${node.id} failed to sign BTC tx after ${Communicator.MAX_SIGNATURE_ATTEMPTS} attempts`);
+                //                 // Remove the transaction from buffer
+                //                 this.btcTransactionsBuffer = this.btcTransactionsBuffer.filter(t => t.tx.toHex() !== tx.tx.toHex());
+                //                 this.signatureTimeouts.delete(sigKey);
+                //                 this.applyPunitveMeasures(node, `BTC Signature timeout, txId: ${tx.tx.toHex()}, type: ${tx.type}`);
+                //                 return;
+                //             }
+                //         }
+                    
+                //     // Update timeout tracking
+                //     }
+                    
                 }
             });
+            // Request signature
+
         });
     }
   // Remove Cardano the transaction from buffer
