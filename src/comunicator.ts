@@ -150,11 +150,7 @@ export class Communicator {
     constructor(topology: topology, secrets: secretsConfig , port: number ) {
         this.heartbeat = this.heartbeat.bind(this);
         this.topology = topology;
-        (async () => {
-            try {
-                
-                // Add a timeout to the getProtocolParameters call
-           
+        (async () => {           
                 // sleep for 10 seconds
                 await new Promise((resolve) => setTimeout(resolve, 10000));
                 
@@ -184,12 +180,7 @@ export class Communicator {
                 this.leaderTimeout = new Date();
 
                  
-            } catch (err) {
-                console.error('Error starting lucid:', err);
-                if (err.cause) {
-                    console.error('Cause:', err.cause);
-                }
-            }
+            
         })();
         
         function initializeNodes(topology: topology,  Iam: number, cardanoNetwork: LucidEvolution.Network) {
@@ -805,11 +796,9 @@ export class Communicator {
             }
             coordinator.completeFoundRedemption(data);
         });
-        
-
- 
+     
         socket.on('disconnect', () => {
-            console.log('Client disconnected');
+            console.log('Client disconnected', index,this.peers[index].id);
             
             this.peers[index].incomingConnection = null;
             this.peers[index].state = NodeStatus.Disconnected;
@@ -928,14 +917,16 @@ export class Communicator {
         this.peers[i].outgoingConnection = socket;
 
         socket.on('disconnect', () => {
-            console.log('Disconnected from server');
+            console.log('Disconnected from server', this.peers[i].id , i);
             this.peers[i].outgoingConnection = null;
             this.peers[i].state = NodeStatus.Disconnected;
             this._connectingPeers.delete(i);  // Clear connecting state
         });
 
+
         socket.on('connect_error', (error) => {
             socket.disconnect();
+            console.log('Connect error', this.peers[i].id , i);
             this.peers[i].outgoingConnection = null;
             this.peers[i].state = NodeStatus.Disconnected;
             this._connectingPeers.delete(i);  // Clear connecting state
