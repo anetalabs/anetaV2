@@ -913,7 +913,7 @@ export class Communicator {
             return;
         }
 
-        const socket = Client(`http://${this.peers[i].ip}:${this.peers[i].port}`, { transports: ['websocket'] });
+        const socket = Client(`http://${this.peers[i].ip}:${this.peers[i].port}`, { transports: ['polling'] });
         this.peers[i].outgoingConnection = socket;
 
         socket.on('disconnect', () => {
