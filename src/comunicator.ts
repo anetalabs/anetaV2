@@ -915,7 +915,7 @@ export class Communicator {
         }
 
         const socket = Client(`http://${this.peers[i].ip}:${this.peers[i].port}`, {
-            transports: ['websocket', 'polling']
+            transports: ['websocket', 'polling'], ackTimeout  : 10000
         });
         this.peers[i].outgoingConnection = socket;
 
