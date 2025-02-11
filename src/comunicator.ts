@@ -926,7 +926,7 @@ export class Communicator {
 
         socket.on('connect_error', (error) => {
             socket.disconnect();
-            console.log('Connect error', this.peers[i].id , i);
+            console.log('Connect error', this.peers[i].id , i, error.message);
             this.peers[i].outgoingConnection = null;
             this.peers[i].state = NodeStatus.Disconnected;
             this._connectingPeers.delete(i);  // Clear connecting state
