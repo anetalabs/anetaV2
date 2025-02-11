@@ -928,7 +928,7 @@ export class Communicator {
 
 
         socket.on('connect_error', (error) => {
-            if(!socket.connect){
+            if(!socket.connected){
                 // sleep for 10 seconds
                 setTimeout(() => {
                    if(!socket.recovered) socket.connect();
