@@ -915,7 +915,7 @@ export class Communicator {
         }
 
         const socket = Client(`http://${this.peers[i].ip}:${this.peers[i].port}`, {
-            transports: ['websocket', 'polling'], ackTimeout  : 10000
+            transports: ['websocket', 'polling'], ackTimeout  : 50000
         });
         this.peers[i].outgoingConnection = socket;
 
@@ -928,12 +928,8 @@ export class Communicator {
 
 
         socket.on('connect_error', (error) => {
-            if(!socket.connected){
-                socket.disconnect();
-                console.log('Connect error', this.peers[i].id , i, error.message);
-                this.peers[i].outgoingConnection = null;
-                this.peers[i].state = NodeStatus.Disconnected;
-                this._connectingPeers.delete(i);  // Clear connecting state
+            if(!socket.connect){
+                socket.connect();
             }
         });
 
