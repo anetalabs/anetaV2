@@ -560,7 +560,7 @@ export class Communicator {
                     console.log('Invalid vote data received');
                     return;
                 }
-
+                
                 const decodedVote: vote = JSON.parse(vote.vote);
                 const addressHex = LucidEvolution.CML.Address.from_bech32(decodedVote.voter).to_hex();
                 const verified = LucidEvolution.verifyData(
@@ -569,11 +569,12 @@ export class Communicator {
                     this.stringToHex(vote.vote),
                     vote.signature
                 );
-
+                
                 const addressIsPeer = (this.peers.findIndex(peer => peer.address === decodedVote.voter) === index);
                 const isTimeValid = Math.abs(decodedVote.time - Date.now()) < HEARTBEAT;
-
+                
                 if (verified && addressIsPeer && isTimeValid) {
+                    console.log('Vote ', vote, 'accepted', decodedVote.candidate, 'from', decodedVote.voter);
                     this.peers[index].votedFor = decodedVote.candidate;
                 } else {
                     console.log('Vote validation failed:', { verified, addressIsPeer, isTimeValid });
