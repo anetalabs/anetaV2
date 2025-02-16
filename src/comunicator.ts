@@ -453,6 +453,11 @@ export class Communicator {
         socket.on('challengeResponse', async (response) => {
             const peerindex = this.peers.findIndex(peer => peer.address === response.address);
             clearTimeout(handshakeTimeout);
+            if (peerindex === -1) {
+                console.log("Peer not found", response.address);
+                socket.disconnect();
+                return;
+            }
             if(this.peers[peerindex].penaltyTime && this.peers[peerindex].penaltyTime > new Date()){
                 console.log("Peer is penalized", response.address);
                 socket.disconnect();
