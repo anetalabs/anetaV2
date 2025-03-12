@@ -17,7 +17,7 @@ async function main(){
 
     const config = JSON.parse((await readFile('../../../config/cardanoConfig.json')).toString());
     const seed = JSON.parse((await readFile('../../../config/secrets.json')).toString());
-    const lucid = await LucidEvolution.Lucid(new UTXORpcProvider({url: config.utxoRpc.host, headers: config.utxoRpc.headers}), config.network);
+    const lucid = await LucidEvolution.Lucid(new UTXORpcProvider({url: 'https://preprod.utxorpc-v0.demeter.run', headers: { "dmtr-api-key":"dmtr_utxorpc14jq02rw4efk899adecuu45c2wvn26a0p"}}), config.network);
     lucid.selectWallet.fromSeed(seed.seed);
     const signature = (await lucid.wallet().signTx(LucidEvolution.CML.Transaction.from_cbor_hex(tx))).to_cbor_hex();
     console.log("Signature: ");

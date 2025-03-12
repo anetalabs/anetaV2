@@ -54,7 +54,8 @@ async function main() {
     const basePstb = bitcoin.Psbt.fromHex(rawTxs[0], {network : bitcoin.networks[bitcoinConfig.network] });
     const signedTx = rawTxs.slice(1).reduce((acc, psbt) => combine(acc, psbt), basePstb);
     console.log("signed Tx:", signedTx.toHex());
-    completeAndSubmit(signedTx);
+    const txid = await completeAndSubmit(signedTx);
+    console.log("txid:", txid);
 
 }
 main();
