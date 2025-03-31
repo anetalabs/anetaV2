@@ -1,0 +1,12 @@
+{
+    "bitcoinRPC" :{
+        "username": "test",
+        "password": "123456789",
+        "port": 18332,
+        "host": "bitcoin",
+        "timeout": 700000
+    },
+    "falbackFeeRate": 0.00001,
+    "network": "mainnet",
+    "paymentPaths" : 10
+}

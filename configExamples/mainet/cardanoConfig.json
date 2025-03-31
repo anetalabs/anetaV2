@@ -1,0 +1,15 @@
+{
+        "DbName" : "cNeta",
+        "network": "mainnet",
+        "mongo": {
+            "connectionString": "mongodb://mongo:27017"
+        },
+	 "utxoRpc": {
+            "host": "http://dolos:50051",
+            "headers":  {}
+        },
+    "startPoint" :{
+       "hash": "ee7be2b2339dc2fcea4b3b500625c206d4def8ecbb003a2cf76dd94ceef502b3",
+       "slot": 151854413
+    }
+}

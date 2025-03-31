@@ -1,7 +1,7 @@
 services:
   bitcoin:
     build:
-      context: BtcCore
+      context: BtcCore/${NETWORK:-mainnet}
       dockerfile: dockerfile
     volumes:
       - ../data/bitcoin:/data
@@ -42,7 +42,7 @@ services:
     image: ghcr.io/txpipe/dolos:latest
     volumes:
       -  ./config/dolos.toml:/etc/dolos/daemon.toml
-      -  ./dolos/preprod/genesis:/etc/dolos/genesis
+      -  ./dolos/${NETWORK:-mainnet}/genesis:/etc/dolos/genesis
       - ../data/dolos:/data
     entrypoint: sh -c " dolos daemon "
     healthcheck:
