@@ -29,7 +29,7 @@ sudo apt install docker-ce
 
 To bootstrap the dolos node using mithril, run the following command: [Important during first start]
 ```bash
-docker run -it   -p 50051:50051   -v "$(pwd)/config/dolos.toml:/etc/dolos/daemon.toml"   -v "$(pwd)/dolos/preprod/genesis:/etc/dolos/genesis"   -v "$(pwd)/../data/dolos:/data"   --entrypoint sh   ghcr.io/txpipe/dolos:latest   -c " dolos bootstrap "
+docker run -it   -p 50051:50051   -v "$(pwd)/config/dolos.toml:/etc/dolos/daemon.toml"   -v "$(pwd)/dolos/mainnet/genesis:/etc/dolos/genesis"   -v "$(pwd)/../data/dolos:/data"   --entrypoint sh   ghcr.io/txpipe/dolos:latest   -c " dolos bootstrap "
 ```
 
 Create configuration from example files
