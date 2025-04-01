@@ -1,7 +1,7 @@
 [upstream]
 peer_address = "5.250.178.133:4000"
-network_magic = 0
-is_testnet = true
+network_magic = 764824073
+is_testnet = false
 
 [storage]
 path = "/data"
@@ -28,7 +28,7 @@ magic = 1
 
 [relay]
 listen_address = "[::]:30031"
-magic = 1
+magic = 764824073
 
 [mithril]
 aggregator = "https://aggregator.release-mainnet.api.mithril.network/aggregator"
