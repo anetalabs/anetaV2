@@ -1,0 +1,12 @@
+name = "anetaBTC/V2"
+version = "0.0.0"
+compiler =  "v2.1.0"
+plutus = "v3"
+license = "Apache-2.0"
+description = "Aiken contracts for project 'anetaBTC/V2'"
+
+
+[[dependencies]]
+name = "aiken-lang/stdlib"
+version = "v2.1.0"
+source = "github"

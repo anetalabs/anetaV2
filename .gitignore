@@ -129,3 +129,4 @@ config.json
 log.txt
 config/*
 testConfigs/*
+build/*
