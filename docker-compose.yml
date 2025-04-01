@@ -1,7 +1,7 @@
 services:
   bitcoin:
     build:
-      context: BtcCore/${NETWORK:-mainnet}
+      context: config/BtcCore
       dockerfile: dockerfile
     volumes:
       - ../data/bitcoin:/data
@@ -39,7 +39,7 @@ services:
       retries: 3
       start_period: 20s
   dolos:
-    image: ghcr.io/txpipe/dolos:latest
+    image: ghcr.io/txpipe/dolos:v0.17
     volumes:
       -  ./config/dolos.toml:/etc/dolos/daemon.toml
       -  ./dolos/${NETWORK:-mainnet}/genesis:/etc/dolos/genesis
