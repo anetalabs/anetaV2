@@ -111,8 +111,8 @@ export class CardanoWatcher{
         //this.lucid.provider.submitTx(tx.toString());     
         console.log("Submitting: ", tx.toHash());
         try{
-        await axios.post( "https://cardano-preprod.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toCBOR({canonical : true}), 'hex'), {headers: {"project_id": "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2", "Content-Type": "application/cbor"}})   
-        //    / await this.lucid.config().provider.submitTx(tx.toCBOR());
+       // await axios.post( "https://cardano-preprod.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toCBOR({canonical : true}), 'hex'), {headers: {"project_id": "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2", "Content-Type": "application/cbor"}})   
+        await this.lucid.config().provider.submitTx(tx.toCBOR());
         communicator.removeCardanoTransaction(tx.toHash());
     }catch(e){
             console.log(e);
@@ -234,7 +234,6 @@ export class CardanoWatcher{
             communicator.signatureResponse({txId : tx.txId , signature});
             //update the rejection queue to reflect that the request has been signed
             requestListing.completed = new Date();
-            
         }
     }
     async rejectRequest(txHash: string, index: number){
@@ -301,7 +300,6 @@ export class CardanoWatcher{
      }
     
 
-
     async confescateDeposit(txHash: string, index: number){
         console.log("Confescating Deposit", txHash, index);
         if(communicator.amILeader()){
@@ -315,9 +313,8 @@ export class CardanoWatcher{
                                             .attach.SpendingValidator(this.mintingScript)
                                             .collectFrom([request], LucidEvolution.Data.void() )
                                             .readFrom([this.configUtxo])
-                
-                
-                
+
+                                            
                 quorum.forEach((signer) => {
                     spendingTx.addSigner(signer);
                 });
@@ -341,7 +338,6 @@ export class CardanoWatcher{
     async checkMedatada(data_hash: string, metadata: any){
         console.log("Checking Metadata", data_hash, metadata)
         return true; //TODO: Implement Metadata Check
-
     }
 
     async signMint(tx : {tx: string , txId : string , metadata: [string, number][]}){
