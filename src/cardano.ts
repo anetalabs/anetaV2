@@ -258,7 +258,7 @@ export class CardanoWatcher{
 
                 
                 try{
-                    const tx = await spendingTx.complete({ setCollateral: 4_000_000n, changeAddress: await this.getUtxoSender(txHash, index),  canonical: true});
+                    const tx = await spendingTx.complete({ setCollateral: 4_000_000n, changeAddress: await this.getUtxoSender(txHash, index),  canonical: true, localUPLCEval : false});
                     const signature = await  tx.partialSign.withWallet();
                     communicator.cardanoTxToComplete({type: "rejection", txId : tx.toHash(), signatures: [signature] , tx, status: "pending"});
                 }catch(e){
