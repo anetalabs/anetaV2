@@ -1,15 +1,21 @@
 //import CoinKey from 'coinkey'; 
-import { Lucid, Utils } from 'lucid-cardano';
+import { Lucid, getAddressDetails  } from '@lucid-evolution/lucid';
 import * as bip39 from 'bip39';
 import {BIP32Factory} from 'bip32';
 import * as ecc from 'tiny-secp256k1';
+import { U5C as UTXORpcProvider } from "@utxorpc/lucid-evolution-provider";
+import fs from 'fs';
+import util from 'util';
+const readFile = util.promisify(fs.readFile);
 
 async function main(){
     const seedPhrase =  process.argv[2]; //argument from command line
-    const utils = new Utils()
-    const lucid = new Lucid()
-    lucid.selectWalletFromSeed(seedPhrase)
-    const AdaPubkey = utils.getAddressDetails(await lucid.wallet.address()).paymentCredential.hash
+    const config = JSON.parse((await readFile('../config/cardanoConfig.json')).toString());
+    const provider = new UTXORpcProvider({url: config.utxoRpc.host, headers: config.utxoRpc.headers})
+    const network = (config.network.charAt(0).toUpperCase() + config.network.slice(1));
+    const lucid = await Lucid(provider, network)
+    lucid.selectWallet.fromSeed(seedPhrase)
+    const AdaPubkey = getAddressDetails(await lucid.wallet().address()).paymentCredential.hash
 
 
     const seed = bip39.mnemonicToSeedSync(seedPhrase);

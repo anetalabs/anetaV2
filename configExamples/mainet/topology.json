@@ -1,8 +1,7 @@
 {
     
     "topology" : [
-        {"name":"Guardian Angel 1","ip":"<IP_ADDRESS>","AdaPkHash":"00fb9ebd6baf0680bdf8da11f87eaca9715d1f9ffa9c83241c643e53","btcKey":"xpub6BmdTCP32fE1Rzio7ebg3VG5zx1KsHqMBBwWUMz5gvVqYYCDBgCVvA5VPFZxPvVTgdxnyRVQ94nPxVcVpJ1yoztbbDJbud57yHqqrD97cVB"},
-        {"name": "Guardian Angel 2","ip": "" , "AdaPkHash" : "00fb9ebd6baf0680bdf8da11f87eaca9715d1f9ffa9c83241c643e53", "btcKey" : "xpub6BmdTCP32fE1Rzio7ebg3VG5zx1KsHqMBBwWUMz5gvVqYYCDBgCVvA5VPFZxPvVTgdxnyRVQ94nPxVcVpJ1yoztbbDJbud57yHqqrD97cVB"}
+        {"name":"BSP","ip":"206.189.99.46" , "port": 3000,"AdaPkHash":"56f3c74d77975990575faa11ec96eb05d1af9d25f19eb75c4553f6f6","btcKey":"xpub6BiiULDmYTYJ61pFM3Cy7GytjvrNBSfBnA4T8SEDgH2LoJvHrLstg8mWisPYxbEw6Mw4boyAUB8FdaeVsBd1i3xaNkf7Ju4qhMMQSJPgQ9N"}
     ],    
     "m":1
 }

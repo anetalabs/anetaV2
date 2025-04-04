@@ -35,8 +35,9 @@ async function main(){
     
     const data = LucidEvolution.Data.to({ list: newMembers , m: BigInt(newM) }, MultisigDescriptorSchema);
     const address = LucidEvolution.validatorToAddress(network,{ "type" : "PlutusV3", "script" :  protocolConfig.configHostContract})
-
-    tx.pay.ToContract(address, { "kind" : "inline", "value" : data}, configUtxo.assets)
+    const assets = {"lovelace" : 2000000 }
+    assets[protocolConfig.adminToken] = 1
+    tx.pay.ToContract(address, { "kind" : "inline", "value" : data}, assets)
     tx.attach.Script({ "type" : "PlutusV3", "script" :  protocolConfig.configHostContract})
     const completeTx = await tx.complete();
     console.log(completeTx.toCBOR());
