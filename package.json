@@ -9,9 +9,9 @@
     "start": "npm-run-all --parallel watch:build watch:server --print-label",
     "build": "tsc",
     "p2pDev": "concurrently --kill-others \"tsc --watch\" \"npm run p2p:1\" \"npm run p2p:2\"",
-    "p2p:1": "nodemon dist/index.js --watch ./dist --topology testConfigs/preprodPublicTestnet/topology.json --secrets testConfigs/preprodPublicTestnet/Member1/secrets.example.json --bitcoinConfig testConfigs/preprodPublicTestnet/Member1/bitcoinConfig.json --cardanoConfig testConfigs/preprodPublicTestnet/Member1/cardanoConfig.json  --protocolConfig testConfigs/preprodPublicTestnet/protocolConf.json",
-    "p2p:2": "nodemon dist/index.js --watch ./dist --port 3001 --apiPort 3031 --topology testConfigs/preprodPublicTestnet/topology.json --secrets testConfigs/preprodPublicTestnet/Member2/secrets.example.json --bitcoinConfig testConfigs/preprodPublicTestnet/Member2/bitcoinConfig.json --cardanoConfig testConfigs/preprodPublicTestnet/Member2/cardanoConfig.json  --protocolConfig testConfigs/preprodPublicTestnet/protocolConf.json",
-    "p2p:3": "nodemon dist/index.js --watch ./dist --port 3002 --apiPort 3032 --topology testConfigs/preprodPublicTestnet/topology.json --secrets testConfigs/preprodPublicTestnet/Member3/secrets.example.json --bitcoinConfig testConfigs/preprodPublicTestnet/Member3/bitcoinConfig.json --cardanoConfig testConfigs/preprodPublicTestnet/Member3/cardanoConfig.json  --protocolConfig testConfigs/preprodPublicTestnet/protocolConf.json",
+    "p2p:1": "nodemon dist/index.js --watch ./dist --topology testConfigs/devBridge1/topology.json --secrets testConfigs/devBridge1/Member1/secrets.example.json --bitcoinConfig testConfigs/devBridge1/Member1/bitcoinConfig.json --cardanoConfig testConfigs/devBridge1/Member1/cardanoConfig.json  --protocolConfig testConfigs/devBridge1/protocolConf.json",
+    "p2p:2": "nodemon dist/index.js --watch ./dist --port 3001 --apiPort 3031 --topology testConfigs/devBridge1/topology.json --secrets testConfigs/devBridge1/Member2/secrets.example.json --bitcoinConfig testConfigs/devBridge1/Member2/bitcoinConfig.json --cardanoConfig testConfigs/devBridge1/Member2/cardanoConfig.json  --protocolConfig testConfigs/devBridge1/protocolConf.json",
+    "p2p:3": "nodemon dist/index.js --watch ./dist --port 3002 --apiPort 3032 --topology testConfigs/devBridge1/topology.json --secrets testConfigs/devBridge1/Member3/secrets.example.json --bitcoinConfig testConfigs/devBridge1/Member3/bitcoinConfig.json --cardanoConfig testConfigs/devBridge1/Member3/cardanoConfig.json  --protocolConfig testConfigs/devBridge1/protocolConf.json",
     "watch:build": "tsc --watch",
     "watch:server": "nodemon dist/index.js --watch ./dist"
   },
@@ -29,7 +29,7 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "@lucid-evolution/lucid": "^0.4.15",
+    "@lucid-evolution/lucid": "^0.4.25",
     "@utxorpc/lucid-evolution-provider": "^0.1.6",
     "@utxorpc/sdk": "^v0.6.7",
     "axios": "^1.6.8",

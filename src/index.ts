@@ -24,12 +24,12 @@ console.log(args);
 async function main() {
     
     const readFile = util.promisify(fs.readFile);
-    const cardanoConfig : cardanoConfig = JSON.parse((await readFile(args.cardanoConfig || './configExamples/cardanoConfig.json')).toString());
-    const bitcoinConfig : bitcoinConfig = JSON.parse((await readFile(args.bitcoinConfig || './configExamples/bitcoinConfig.json')).toString());
-    const notificationConfig : notificationConfig = JSON.parse((await readFile(args.notificationConfig || './configExamples/notificationConfig.json')).toString());
-    const topology : topology =  JSON.parse((await readFile(args.topology || './configExamples/topology.json')).toString());
-    const secrets : secretsConfig= JSON.parse((await  readFile(args.secrets || './configExamples/secrets.json')).toString() );
-    const protocolConfig : protocolConfig = JSON.parse((await readFile(args.protocolConfig || './configExamples/protocolConfig.json')).toString());
+    const cardanoConfig : cardanoConfig = JSON.parse((await readFile(args.cardanoConfig || './config/cardanoConfig.json')).toString());
+    const bitcoinConfig : bitcoinConfig = JSON.parse((await readFile(args.bitcoinConfig || './config/bitcoinConfig.json')).toString());
+    const notificationConfig : notificationConfig = JSON.parse((await readFile(args.notificationConfig || './config/notificationConfig.json')).toString());
+    const topology : topology =  JSON.parse((await readFile(args.topology || './config/topology.json')).toString());
+    const secrets : secretsConfig= JSON.parse((await  readFile(args.secrets || './config/secrets.json')).toString() );
+    const protocolConfig : protocolConfig = JSON.parse((await readFile(args.protocolConfig || './config/protocolConfig.json')).toString());
     const server = new ApiServer();
     server.start(args.apiPort || 3030);
     
