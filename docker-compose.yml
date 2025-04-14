@@ -42,7 +42,7 @@ services:
     image: ghcr.io/txpipe/dolos:v0.17
     volumes:
       -  ./config/dolos.toml:/etc/dolos/daemon.toml
-      -  ./dolos/${NETWORK:-mainnet}/genesis:/etc/dolos/genesis
+      -  ./config/dolos/genesis:/etc/dolos/genesis
       - ../data/dolos:/data
     entrypoint: sh -c " dolos daemon "
     healthcheck:
