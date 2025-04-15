@@ -29,14 +29,25 @@ sudo apt install docker-ce
 
 To bootstrap the dolos node using mithril, run the following command: [Important during first start]
 ```bash
-docker run -it   -p 50051:50051   -v "$(pwd)/config/dolos.toml:/etc/dolos/daemon.toml"   -v "$(pwd)/dolos/mainnet/genesis:/etc/dolos/genesis"   -v "$(pwd)/../data/dolos:/data"   --entrypoint sh   ghcr.io/txpipe/dolos:latest   -c " dolos bootstrap "
+docker run -it   -p 50051:50051   -v "$(pwd)/config/dolos.toml:/etc/dolos/daemon.toml"   -v "$(pwd)/dolos/<<TARGET_NETWORK>>/genesis:/etc/dolos/genesis"   -v "$(pwd)/../data/dolos:/data"   --entrypoint sh   ghcr.io/txpipe/dolos:v0.20.0   -c " dolos bootstrap "
 ```
 
 Create configuration from example files
 ```bash
 mkdir config
-cp configExamples/* config
+cp configExamples/<<TARGET_NETWORK>>/* config
 ```
+
+Copy the genesis files into the config folder
+
+```bash
+mkdir config/genesis
+cp -r dolos/<<TARGET_NETWORK>>/genesis config/genesis
+```
+
+If running on mainnet make sure to update the cardano config and point to a node you own, you do that by editing the dolos.toml
+`peer_address = "5.250.178.133:4000"` -> `peer_address = <<Your own relay IP:port>>` 
+
 
 To start a guardian angel
 ```bash
