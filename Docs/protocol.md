@@ -46,6 +46,8 @@ In the minting Transaction the following Metadata will be attached:
 
 Incoming redeem-request:   
 ![Redemption Flow](./images/burn.png)
+
+
 In the redemption request the UTxO will contain the following datum:  
 \[\<String:Bitcoin address\>\]
 
