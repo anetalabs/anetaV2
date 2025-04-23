@@ -14,6 +14,7 @@ services:
       retries: 5
       start_period: 20s
       timeout: 10s
+    restart: always
   guardian-angel:
     build:
       dockerfile: dockerfile
