@@ -7,8 +7,8 @@ Guardian angels are autonomous agents that control the AnetaBTC bridge, each one
 Recommended specs : 
 
 * 16Gb Ram  
-* 12 CPU Cores  
-* 2 Tb Storage
+* 8 CPU Cores  
+* 300 Gb Storage (600Gb recomended)
 
 Recommended setup:
 
@@ -19,11 +19,9 @@ Docker compose with :
 3. mongoDB  
 4. The guardian software   
      
-   
-
 Operational Specs:
 
-* Maximum of 15 Guardian Angels  
+* Maximum of 16 Guardian Angels  
 * At least half required for signing  
 * Transactions are only considered valid after they are finalized 
 
@@ -34,12 +32,12 @@ Incoming mint-request:
 
 In the mint request the UTxO will contain the following datum: 
 
-	\[\<Integer:Amount to mint in Sats\>,\<Integer:Payment Path\>\] 
+	[<Integer:Amount to mint in Sats>,<Integer:Payment Path>] 
 
 In the minting Transaction the following Metadata will be attached:
 
 	{ “85471236584” :   
-	 	{ “Payment” : \[\<Sting:The Bitcoin Utxos paying for the mint\>\] }  
+	 	{ “Payment” : [<Sting:The Bitcoin Utxos paying for the mint>] }  
 	}
 
 \*1 \= Check that no other UTxOs are open requesting a mint in the same payment Path  
@@ -55,14 +53,9 @@ The cBTC burn transaction will contain the following metadata:
 {“85471236585”: \<String: TxHash of the redemption tx\>  
 }
 
-If redemption txs take longer than  4 hours to be included in a block we will use a pay-by-child to fulfill the requests in the redemption que, if no redemption requests are pending then we will perform a consolidation transaction for the pay-by-child, the fees on the pay by child will use the following formula : 
+If redemption txs take longer than  4 hours to be included in a block we will use a pay-by-child to fulfill the requests in the redemption que, if no redemption requests are pending then we will perform a consolidation transaction for the pay-by-child.
 
-Fee \= \[Current Tx fee\] \+ Sum(Tx(1-n)Fee  )  
-Where:  
- Tx(x) \= the x transaction pending.   
- N \= Number of pending transactions
-
-\*1 \= Aggregating requests will lower the Bitcoin Tx fees and alleviate contention concerns
+*1 = Aggregating requests will lower the Bitcoin Tx fees and alleviate contention concerns
 
 **Internal services:** 
 

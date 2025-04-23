@@ -69,7 +69,7 @@ The `secrets` file is intended to store the private keys for the guardian angel,
 ## Documentation
 
 
-For more information on the guardian angel and the protocol, please refer to the TODO.
+For more information on the guardian angel and the protocol, please refer to the [Protocol](Docs/protocol.md) documentation
 
 
 
