@@ -12,7 +12,7 @@ const args  = minimist(process.argv.slice(2));
 
 const readFile = util.promisify(fs.readFile);
 
-const bitcoinConfig = JSON.parse((await readFile(args.bitcoinConfig || '../../../config/bitcoinConfig.json')).toString());
+const bitcoinConfig = JSON.parse((await readFile(args.bitcoinConfig || '../config/bitcoinConfig.json')).toString());
 
 function combine(psbt1, psbt2) {
     const txb1 = psbt1

@@ -14,8 +14,8 @@ const args  = minimist(process.argv.slice(2));
 
 const readFile = util.promisify(fs.readFile);
 
-const bitcoinConfig = JSON.parse((await readFile(args.bitcoinConfig || '../../../config/bitcoinConfig.json')).toString());
-const secrets = JSON.parse((await readFile(args.secrets || '../../../config/secrets.json')).toString());
+const bitcoinConfig = JSON.parse((await readFile(args.bitcoinConfig || '../config/bitcoinConfig.json')).toString());
+const secrets = JSON.parse((await readFile(args.secrets || '../config/secrets.json')).toString());
 
 async function signTx(txHex){
     const txb = bitcoin.Psbt.fromHex(txHex, {network : bitcoin.networks[bitcoinConfig.network] });
@@ -30,7 +30,7 @@ async function signTx(txHex){
    
     const watcherKey = ECPair.fromPrivateKey(Buffer.from(node.privateKey.toString('hex'),'hex'), { network: bitcoin.networks[bitcoinConfig.network] })
     txb.signAllInputs(watcherKey);
-    console.log("signed Tx:", txb.toHex());
+    console.log("\n signed Tx: \n", txb.toHex());
 
 }
 

@@ -97,15 +97,20 @@ async function handleBTCTransaction() {
     console.log('1. Create new vault transfer transaction');
     console.log('2. Inspect transaction');
     console.log('3. Sign transaction');
+    console.log('4. Submit transaction');
     
     const choice = await askQuestion('\nEnter your choice (1-3): ');
     
     try {
         switch (choice) {
             case '1':
-                const amount = await askQuestion('Enter amount in BTC: ');
+                const amount = await askQuestion('Enter amount in BTC(0 for all): ');
                 const address = await askQuestion('Enter recipient address: ');
-                execSync(`node migration/Bitcoin/newBtcVaultTx.js --amount ${amount} --targetAddress ${address}`, { stdio: 'inherit' });
+                if (amount !== '0') {
+                    execSync(`node migration/Bitcoin/newBtcVaultTx.js  --amount ${amount} --targetAddress ${address}`, { stdio: 'inherit' });
+                } else {
+                    execSync(`node migration/Bitcoin/newBtcVaultTx.js  --targetAddress ${address}`, { stdio: 'inherit' });
+                }
                 break;
             case '2':
                 const txId = await askQuestion('Enter transaction hex to inspect: ');
@@ -114,6 +119,12 @@ async function handleBTCTransaction() {
             case '3':
                 const txToSign = await askQuestion('Enter transaction hex to sign: ');
                 execSync(`node migration/Bitcoin/signBtcTx.js --txHex ${txToSign}`, { stdio: 'inherit' });
+                break;
+            case '4':
+                const txToSubmit = await askQuestion('Enter signed transactions hex to submit (comma-separated): ');
+                const txArray = txToSubmit.split(',').map(tx => `--txHex ${tx.trim()}`);
+                const txString = txArray.join(' ');
+                execSync(`node migration/Bitcoin/combineAndSubmit.js ${txString}`, { stdio: 'inherit' });
                 break;
             default:
                 console.log('Invalid choice. Please try again.');
