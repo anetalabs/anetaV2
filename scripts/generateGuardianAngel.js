@@ -1,18 +1,17 @@
 //import CoinKey from 'coinkey'; 
-import { Lucid , generateSeedPhrase, getAddressDetails } from '@lucid-evolution/lucid';
+import { Blockfrost, Lucid , generateSeedPhrase, getAddressDetails } from '@lucid-evolution/lucid';
 import * as bip39 from 'bip39';
 import {BIP32Factory} from 'bip32';
 import * as ecc from 'tiny-secp256k1';
-import { U5C as UTXORpcProvider } from "@utxorpc/lucid-evolution-provider";
 import fs from 'fs';
 import util from 'util';
 const readFile = util.promisify(fs.readFile);
 
 async function main(){
     const config = JSON.parse((await readFile('../config/cardanoConfig.json')).toString());
-
+    const scriptConfig = JSON.parse((await readFile('./scriptsConfig.json')).toString());
     const seedPhrase  = generateSeedPhrase()
-    const provider = new UTXORpcProvider({url: config.utxoRpc.host, headers: config.utxoRpc.headers})
+    const provider = new Blockfrost(scriptConfig[config.network].blockfrost.url, scriptConfig[config.network].blockfrost.key)
     
     const network = (config.network.charAt(0).toUpperCase() + config.network.slice(1));
     const lucid = await Lucid(provider, network)

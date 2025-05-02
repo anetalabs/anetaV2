@@ -1,0 +1,17 @@
+
+{
+    "preprod" : {
+        "blockfrost" : {
+            "url" : "https://passthrough.broclan.io",
+            "key" : "preprod"
+        }
+    },
+    "mainnet" : {
+        "blockfrost" : {
+            "url" : "https://passthrough.broclan.io",
+            "key" : "mainnet"
+        }
+
+    }
+    
+}

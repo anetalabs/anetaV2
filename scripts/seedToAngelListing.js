@@ -1,9 +1,8 @@
 //import CoinKey from 'coinkey'; 
-import { Lucid, getAddressDetails  } from '@lucid-evolution/lucid';
+import { Lucid, getAddressDetails, Blockfrost } from '@lucid-evolution/lucid';
 import * as bip39 from 'bip39';
 import {BIP32Factory} from 'bip32';
-import * as ecc from 'tiny-secp256k1';
-import { U5C as UTXORpcProvider } from "@utxorpc/lucid-evolution-provider";
+    import * as ecc from 'tiny-secp256k1';
 import fs from 'fs';
 import util from 'util';
 const readFile = util.promisify(fs.readFile);
@@ -11,7 +10,8 @@ const readFile = util.promisify(fs.readFile);
 async function main(){
     const seedPhrase =  process.argv[2]; //argument from command line
     const config = JSON.parse((await readFile('../config/cardanoConfig.json')).toString());
-    const provider = new UTXORpcProvider({url: config.utxoRpc.host, headers: config.utxoRpc.headers})
+    const scriptConfig = JSON.parse((await readFile('./scriptsConfig.json')).toString());
+    const provider = new Blockfrost(scriptConfig[config.network].blockfrost.url, scriptConfig[config.network].blockfrost.key)
     const network = (config.network.charAt(0).toUpperCase() + config.network.slice(1));
     const lucid = await Lucid(provider, network)
     lucid.selectWallet.fromSeed(seedPhrase)
@@ -29,7 +29,7 @@ async function main(){
 
 
     const topologyEntry = {"name": "<NAME>","ip": "<IP_ADDRESS>" , "AdaPkHash" : AdaPubkey, "btcKey" : BtcPublicKey}
-    console.log("topology Entrie:",  JSON.stringify(topologyEntry))
+    console.log("\nTopology Entrie:",  JSON.stringify(topologyEntry))
 }
 
 
