@@ -19,8 +19,8 @@ async function main(){
     const config = JSON.parse((await readFile('../config/cardanoConfig.json')).toString());
     const protocolConfig = JSON.parse((await readFile('../config/protocolConfig.json')).toString());
     const scriptConfig = JSON.parse((await readFile('./scriptsConfig.json')).toString());
-    const signers = args.signers.replaceAll('[', '').replaceAll(']', '').split(',');
-    const newMembers = args.newMembers.replaceAll('[', '').replaceAll(']', '').split(','); 
+    const signers = args.signers.trim().replaceAll('[', '').replaceAll(']', '').split(',');
+    const newMembers = args.newMembers.trim().replaceAll('[', '').replaceAll(']', '').split(','); 
     const newM = parseInt(args.newM); 
     const network = (config.network.charAt(0).toUpperCase() + config.network.slice(1));
     const provider = new Blockfrost(scriptConfig[config.network].blockfrost.url, scriptConfig[config.network].blockfrost.key)
