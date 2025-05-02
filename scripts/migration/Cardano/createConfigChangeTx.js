@@ -17,7 +17,7 @@ const readFile = util.promisify(fs.readFile);
 
 async function main(){
     const config = JSON.parse((await readFile('../config/cardanoConfig.json')).toString());
-    const protocolConfig = JSON.parse((await readFile('../config/protocolConf.json')).toString());
+    const protocolConfig = JSON.parse((await readFile('../config/protocolConfig.json')).toString());
     const scriptConfig = JSON.parse((await readFile('./scriptsConfig.json')).toString());
     const signers = args.signers.replaceAll('[', '').replaceAll(']', '').split(',');
     const newMembers = args.newMembers.replaceAll('[', '').replaceAll(']', '').split(','); 

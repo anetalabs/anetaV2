@@ -21,7 +21,7 @@ const readFile = util.promisify(fs.readFile);
 async function main(){
     let warnings = ""
     const config = JSON.parse((await readFile('../config/cardanoConfig.json')).toString());
-    const protocolConfig = JSON.parse((await readFile('../config/protocolConf.json')).toString());
+    const protocolConfig = JSON.parse((await readFile('../config/protocolConfig.json')).toString());
     const adminToken = protocolConfig.adminToken;
     const adminPolicyLength = 56 ; // Cardano native asset policy ID length in bytes is 28, which is 56 hex characters
     const adminPolicy = adminToken.slice(0, adminPolicyLength);
