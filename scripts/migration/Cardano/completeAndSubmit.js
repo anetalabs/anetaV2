@@ -12,7 +12,10 @@ const args  = minimist(process.argv.slice(2));
 
 async function main(){
     const tx = args.txHex;
-    const signatures = args.signature;
+    let signatures = args.signature;
+    if(typeof signatures === "string"){
+        signatures = signatures.split(",");
+    }
     const config = JSON.parse((await readFile('../config/cardanoConfig.json')).toString());
     const scriptConfig = JSON.parse((await readFile('./scriptsConfig.json')).toString());
     const network = config.network.charAt(0).toUpperCase() + config.network.slice(1);
