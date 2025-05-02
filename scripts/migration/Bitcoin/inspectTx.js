@@ -34,28 +34,42 @@ function getVaultRedeemScript(){
 async function decodeRawTransaction(txHex) {
     const txb = bitcoin.Psbt.fromHex(txHex, {network : bitcoin.networks[bitcoinConfig.network] });
 
-
     let totalInputValue = 0;
     let totalOutputValue = 0;
 
-    console.log("///////////////////// INPUTS /////////////////////////")
-
-    txb.data.inputs.forEach((input) => {
-       console.log(input);
-       totalInputValue += input.witnessUtxo.value;
+    console.log("///////////////////// INPUTS /////////////////////////");
+    txb.data.inputs.forEach((input, idx) => {
+        const utxo = input.witnessUtxo;
+        console.log(`Input #${idx + 1}:`);
+        if (utxo) {
+            console.log(`  Value: ${utxo.value / 1e8} BTC`);
+            console.log(`  ScriptPubKey: ${utxo.script.toString('hex')}`);
+        } else {
+            console.log("  No witnessUtxo data available.");
+        }
+        totalInputValue += utxo ? utxo.value : 0;
     });
-    console.log("///////////////////// OUTPUTS /////////////////////////")
 
-    txb.txOutputs.forEach((output) => {
-        console.log( output);
+    console.log("\n///////////////////// OUTPUTS /////////////////////////");
+    txb.txOutputs.forEach((output, idx) => {
+        console.log(`Output #${idx + 1}:`);
+        console.log(`  Value: ${output.value / 1e8} BTC`);
+        try {
+            const address = bitcoin.address.fromOutputScript(output.script, bitcoin.networks[bitcoinConfig.network]);
+            console.log(`  Address: ${address}`);
+        } catch (e) {
+            console.log(`  Script: ${output.script.toString('hex')}`);
+        }
+    });
+
+    txb.txOutputs.forEach(output => {
         totalOutputValue += output.value;
     });
 
-    console.log("///////////////////// SUMMARY /////////////////////////")
-
-    console.log("Total Input Value: ", totalInputValue);
-    console.log("Total Output Value: ", totalOutputValue);
-    console.log("Fee: ", totalInputValue - totalOutputValue);
+    console.log("\n///////////////////// SUMMARY /////////////////////////");
+    console.log(`Total Input Value:  ${totalInputValue / 1e8} BTC`);
+    console.log(`Total Output Value: ${totalOutputValue / 1e8} BTC`);
+    console.log(`Fee:                ${(totalInputValue - totalOutputValue) / 1e8} BTC`);
 }
 
 

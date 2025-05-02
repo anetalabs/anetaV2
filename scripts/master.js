@@ -26,13 +26,11 @@ async function main() {
         console.log('1. Install dependencies');
         console.log('2. Generate guardian angel');
         console.log('3. Regenerate guardian angel');
-        console.log('4. Create BTC transaction');
-        console.log('5. Create ADA transaction');
-        console.log('6. Inspect BTC transaction');
-        console.log('7. Inspect ADA transaction');
-        console.log('8. Exit');
+        console.log('4. BTC Transaction Menu');
+        console.log('5. ADA Transaction Menu');
+        console.log('6. Exit');
         
-        const choice = await askQuestion('\nEnter your choice (1-8): ');
+        const choice = await askQuestion('\nEnter your choice (1-6): ');
         
         switch (choice) {
             case '1':
@@ -45,18 +43,12 @@ async function main() {
                 await regenerateGuardianAngel();
                 break;
             case '4':
-                await createBTCTransaction();
+                await handleBTCTransaction();
                 break;
             case '5':
-                await createADATransaction();
+                await handleADATransaction();
                 break;
             case '6':
-                await inspectBTCTransaction();
-                break;
-            case '7':
-                await inspectADATransaction();
-                break;
-            case '8':
                 console.log('Goodbye!');
                 process.exit(0);
             default:
@@ -100,45 +92,74 @@ async function regenerateGuardianAngel() {
     }
 }
 
-async function createBTCTransaction() {
-    console.log('\nCreating BTC transaction...');
+async function handleBTCTransaction() {
+    console.log('\nBTC Transaction Menu:');
+    console.log('1. Create new vault transfer transaction');
+    console.log('2. Inspect transaction');
+    console.log('3. Sign transaction');
+    
+    const choice = await askQuestion('\nEnter your choice (1-3): ');
+    
     try {
-        const amount = await askQuestion('Enter amount in BTC: ');
-        const address = await askQuestion('Enter recipient address: ');
-        execSync(`node createBTCTransaction.js --amount ${amount} --address ${address}`, { stdio: 'inherit' });
+        switch (choice) {
+            case '1':
+                const amount = await askQuestion('Enter amount in BTC: ');
+                const address = await askQuestion('Enter recipient address: ');
+                execSync(`node migration/Bitcoin/newBtcVaultTx.js --amount ${amount} --targetAddress ${address}`, { stdio: 'inherit' });
+                break;
+            case '2':
+                const txId = await askQuestion('Enter transaction hex to inspect: ');
+                execSync(`node migration/Bitcoin/inspectTx.js --txHex ${txId}`, { stdio: 'inherit' });
+                break;
+            case '3':
+                const txToSign = await askQuestion('Enter transaction hex to sign: ');
+                execSync(`node migration/Bitcoin/signBtcTx.js --txHex ${txToSign}`, { stdio: 'inherit' });
+                break;
+            default:
+                console.log('Invalid choice. Please try again.');
+        }
     } catch (error) {
-        console.error('Error creating BTC transaction:', error.message);
+        console.error('Error handling BTC transaction:', error.message);
     }
 }
 
-async function createADATransaction() {
-    console.log('\nCreating ADA transaction...');
+async function handleADATransaction() {
+    console.log('\nADA Transaction Menu:');
+    console.log('1. Create new config transaction');
+    console.log('2. Inspect transaction');
+    console.log('3. Sign transaction');
+    console.log('4. Complete and submit transaction');
+    
+    const choice = await askQuestion('\nEnter your choice (1-4): ');
+    
     try {
-        const amount = await askQuestion('Enter amount in ADA: ');
-        const address = await askQuestion('Enter recipient address: ');
-        execSync(`node createADATransaction.js --amount ${amount} --address ${address}`, { stdio: 'inherit' });
+        switch (choice) {
+            case '1':
+                const signers = await askQuestion('Enter current signers (comma-separated): ');
+                const newMembers = await askQuestion('Enter new members (comma-separated): ');
+                const newM = await askQuestion('Enter new M value: ');
+                execSync(`node migration/Cardano/createConfigChangeTx.js --signers "[${signers}]" --newMembers "[${newMembers}]" --newM ${newM}`, { stdio: 'inherit' });
+                break;
+            case '2':
+                const txToInspect = await askQuestion('Enter transaction hex to inspect: ');
+                execSync(`node migration/Cardano/inspectTx.js --txHex ${txToInspect}`, { stdio: 'inherit' });
+                break;
+            case '3':
+                const txToSign = await askQuestion('Enter transaction hex to sign: ');
+                execSync(`node migration/Cardano/signTx.js --txHex ${txToSign}`, { stdio: 'inherit' });
+                break;
+            case '4':
+                const txToSubmit = await askQuestion('Enter transaction hex to submit: ');
+                const signatures = await askQuestion('Enter signatures (comma-separated): ');
+                const signatureArray = signatures.split(',').map(signature => `--signature ${signature.trim()}`);
+                const signatureString = signatureArray.join(' ');
+                execSync(`node migration/Cardano/completeAndSubmit.js --txHex ${txToSubmit} ${signatureString}`, { stdio: 'inherit' });
+                break;
+            default:
+                console.log('Invalid choice. Please try again.');
+        }
     } catch (error) {
-        console.error('Error creating ADA transaction:', error.message);
-    }
-}
-
-async function inspectBTCTransaction() {
-    console.log('\nInspecting BTC transaction...');
-    try {
-        const txId = await askQuestion('Enter transaction ID: ');
-        execSync(`node inspectBTCTransaction.js --txId ${txId}`, { stdio: 'inherit' });
-    } catch (error) {
-        console.error('Error inspecting BTC transaction:', error.message);
-    }
-}
-
-async function inspectADATransaction() {
-    console.log('\nInspecting ADA transaction...');
-    try {
-        const txId = await askQuestion('Enter transaction ID: ');
-        execSync(`node inspectADATransaction.js --txId ${txId}`, { stdio: 'inherit' });
-    } catch (error) {
-        console.error('Error inspecting ADA transaction:', error.message);
+        console.error('Error handling ADA transaction:', error.message);
     }
 }
 

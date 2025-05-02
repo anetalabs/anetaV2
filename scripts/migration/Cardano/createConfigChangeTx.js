@@ -1,9 +1,8 @@
 import * as LucidEvolution from '@lucid-evolution/lucid'
 import fs from 'fs';
 import util from 'util';
-import { U5C as UTXORpcProvider } from "@utxorpc/lucid-evolution-provider";
 import minimist from 'minimist';
-
+import { Blockfrost } from '@lucid-evolution/lucid';
 
 const args  = minimist(process.argv.slice(2));
 
@@ -17,13 +16,15 @@ const MultisigDescriptorSchema = LucidEvolution.Data.Object({
 const readFile = util.promisify(fs.readFile);
 
 async function main(){
-    const config = JSON.parse((await readFile('../../../config/cardanoConfig.json')).toString());
-    const protocolConfig = JSON.parse((await readFile('../../../config/protocolConfig.json')).toString());
+    const config = JSON.parse((await readFile('../config/cardanoConfig.json')).toString());
+    const protocolConfig = JSON.parse((await readFile('../config/protocolConf.json')).toString());
+    const scriptConfig = JSON.parse((await readFile('./scriptsConfig.json')).toString());
     const signers = args.signers.replaceAll('[', '').replaceAll(']', '').split(',');
     const newMembers = args.newMembers.replaceAll('[', '').replaceAll(']', '').split(','); 
     const newM = parseInt(args.newM); 
     const network = (config.network.charAt(0).toUpperCase() + config.network.slice(1));
-    const lucid = await LucidEvolution.Lucid(new UTXORpcProvider({url: config.utxoRpc.host, headers: config.utxoRpc.headers}), network);
+    const provider = new Blockfrost(scriptConfig[config.network].blockfrost.url, scriptConfig[config.network].blockfrost.key)
+    const lucid = await LucidEvolution.Lucid(provider, network);
     const configUtxo = await lucid.config().provider.getUtxoByUnit(protocolConfig.adminToken);
     const walletUtxos =  await lucid.config().provider.getUtxos({ type: "Key", hash: signers[0] });
     lucid.selectWallet.fromAddress( walletUtxos[0].address, walletUtxos);

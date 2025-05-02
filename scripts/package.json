@@ -6,8 +6,10 @@
   "dependencies": {
     "@lucid-evolution/lucid": "^0.4.25",
     "@utxorpc/lucid-evolution-provider": "^0.1.6",
+    "bitcoinjs-lib": "^6.1.5",
     "bip32": "^4.0.0",
     "bip39": "^3.1.0",
+    "bitcoin-core": "^4.2.0",
     "minimist": "^1.2.8",
     "tiny-secp256k1": "^2.2.3"
   }
