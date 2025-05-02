@@ -40,7 +40,7 @@ async function main(){
     assets[protocolConfig.adminToken] = 1
     tx.pay.ToContract(address, { "kind" : "inline", "value" : data}, assets)
     tx.attach.Script({ "type" : "PlutusV3", "script" :  protocolConfig.configHostContract})
-    const completeTx = await tx.complete();
+    const completeTx = await tx.complete({localUPLCEval: false});
     console.log(completeTx.toCBOR());
 }   
 
