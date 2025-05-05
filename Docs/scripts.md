@@ -1,10 +1,7 @@
 ## Setup 
-Before running any of the scripts, you need to install the dependencies. 
-```bash
-npm install
-```
+Before running any of the scripts, you need to install Node.js (version 16 or higher recommended) on your system. You can download it from [nodejs.org](https://nodejs.org/).
 
-All scripts are now managed through the master.js interface. To start the interface, run:
+All scripts are managed through the master.js interface. To start the interface, run:
 ```bash
 node master.js
 ```
@@ -12,7 +9,7 @@ node master.js
 The master interface provides the following options:
 
 ### 1. Install dependencies
-Installs all required npm packages for the scripts.
+This option will install all required npm packages for the scripts. This is the first step you should take after installing Node.js.
 
 ### 2. Generate guardian angel
 Creates a new Guardian angel key and topology entry.
