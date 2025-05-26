@@ -137,11 +137,12 @@ async function handleBTCTransaction() {
 async function handleADATransaction() {
     console.log('\nADA Transaction Menu:');
     console.log('1. Create new config transaction');
-    console.log('2. Inspect transaction');
-    console.log('3. Sign transaction');
-    console.log('4. Complete and submit transaction');
+    console.log('2. Create new mint transaction');
+    console.log('3. Inspect transaction');
+    console.log('4. Sign transaction');
+    console.log('5. Complete and submit transaction');
     
-    const choice = await askQuestion('\nEnter your choice (1-4): ');
+    const choice = await askQuestion('\nEnter your choice (1-5): ');
     
     try {
         switch (choice) {
@@ -152,14 +153,21 @@ async function handleADATransaction() {
                 execSync(`node migration/Cardano/createConfigChangeTx.js --signers "[${signers}]" --newMembers "[${newMembers}]" --newM ${newM}`, { stdio: 'inherit' });
                 break;
             case '2':
+                const mintSigners = await askQuestion('Enter current mint signers (comma-separated): ');
+                const amount = await askQuestion('Enter amount: ');
+                const metadata = await askQuestion('Enter metadata (empty for none): ');
+                const metadataArg = metadata ? `--metadata "${metadata.replace(/"/g, '\\"')}"` : '';
+                execSync(`node createMintTx.js --amount ${amount} --signers "[${mintSigners}]" ${metadataArg}`, { stdio: 'inherit' });
+                break;
+            case '3':
                 const txToInspect = await askQuestion('Enter transaction hex to inspect: ');
                 execSync(`node migration/Cardano/inspectTx.js --txHex ${txToInspect}`, { stdio: 'inherit' });
                 break;
-            case '3':
+            case '4':
                 const txToSign = await askQuestion('Enter transaction hex to sign: ');
                 execSync(`node migration/Cardano/signTx.js --txHex ${txToSign}`, { stdio: 'inherit' });
                 break;
-            case '4':
+            case '5':
                 const txToSubmit = await askQuestion('Enter transaction hex to submit: ');
                 const signatures = await askQuestion('Enter signatures (comma-separated): ');
                 const signatureArray = signatures.split(',').map(signature => `--signature ${signature.trim()}`);

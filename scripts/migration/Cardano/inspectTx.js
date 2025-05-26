@@ -28,7 +28,13 @@ async function main(){
     const adminTokenName = adminToken.slice(adminPolicyLength);
     const tx = args.txHex;
     const txDetails = LucidEvolution.CML.Transaction.from_cbor_hex(tx);
-    if(txDetails.body().outputs().get(0).amount().multi_asset().get_assets(LucidEvolution.CML.ScriptHash.from_hex(adminPolicy)).get(LucidEvolution.CML.AssetName.from_hex(adminTokenName)) === 1n){
+    const adminAsset =  txDetails.body().outputs().get(0).amount().multi_asset().get_assets(LucidEvolution.CML.ScriptHash.from_hex(adminPolicy))
+    
+    
+    const cBTCName =  "63425443";
+
+    const cBTCAsset = txDetails.body().mint().get_assets(LucidEvolution.CML.ScriptHash.from_hex(LucidEvolution.mintingPolicyToId({ "type" : "PlutusV3", "script" :  protocolConfig.contract})))
+    if( adminAsset !== undefined && adminAsset.get(LucidEvolution.CML.AssetName.from_hex(adminTokenName)) === 1n){
         console.log("!!!!!!Config Update Tx!!!!!!!");
         const newconfig = txDetails.body().outputs().get(0).datum().to_js_value().Datum.datum;
         const fields = newconfig.get('fields');
@@ -36,6 +42,28 @@ async function main(){
         const newM = fields[1].get('int');
         console.log("New Signers:", newSigners , "New M:", newM["$serde_json::private::Number"]);
       }
+    else if(cBTCAsset !== undefined && cBTCAsset.get(LucidEvolution.CML.AssetName.from_hex(cBTCName)) !== undefined){
+        console.log("!!!!!!Mint Tx!!!!!!!");
+        if(txDetails.auxiliary_data() !== undefined){
+            const metadata = txDetails.auxiliary_data().metadata().get(721n).to_json();
+            if (metadata ) {
+                const metadataParsed = JSON.parse(metadata);
+                const policyMap = metadataParsed.map[0].v.map[0];
+                const assetMap = policyMap.v.map[0].v.map;
+                console.log("\n-----Metadata-----");
+                assetMap.forEach(item => {
+                    console.log(`${item.k.string}: ${item.v.string}`);
+                });
+            }
+        }else{
+            console.log("No Metadata");
+        }
+        console.log("\nAmount Minted:", Number(cBTCAsset.get(LucidEvolution.CML.AssetName.from_hex(cBTCName))));
+    }
+    else{
+        console.log("!!!!!!Unknown Tx!!!!!!!");
+        console.log(txDetails.to_json());
+    }
     // const newconfig = txDetails.body().outputs().get(0).datum().to_js_value().Datum.datum;
     // const fields = newconfig.get('fields');
     // const newSigners = fields[0].get('list').map((item) => item.get('bytes'));
