@@ -6,7 +6,7 @@ is_testnet = false
 [storage]
 version = "v1"
 path = "/data"
-wal_size = 200000
+wal_size = 500000
 
 [genesis]
 byron_path = "/etc/dolos/genesis/byron.json"
@@ -26,7 +26,7 @@ permissive_cors = true
 
 [serve.ouroboros]
 listen_path = "dolos.socket"
-magic = 1
+magic = 764824073
 
 [relay]
 listen_address = "[::]:30031"
