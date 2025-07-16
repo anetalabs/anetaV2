@@ -46,6 +46,9 @@ services:
       -  ./config/dolos/genesis:/etc/dolos/genesis
       - ../data/dolos:/data
     entrypoint: sh -c " dolos daemon "
+    ports:
+      - "50051:50051"
+      - "30031:30031"
     healthcheck:
       test: ["CMD-SHELL", "pgrep dolos || exit 1"]
       interval: 60s
