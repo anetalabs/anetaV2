@@ -34,7 +34,6 @@ async function main(){
     
     const cBTCName =  "63425443";
 
-    const cBTCAsset = txDetails.body().mint().get_assets(LucidEvolution.CML.ScriptHash.from_hex(LucidEvolution.mintingPolicyToId({ "type" : "PlutusV3", "script" :  protocolConfig.contract})))
     if( adminAsset !== undefined && adminAsset.get(LucidEvolution.CML.AssetName.from_hex(adminTokenName)) === 1n){
         console.log("!!!!!!Config Update Tx!!!!!!!");
         const newconfig = txDetails.body().outputs().get(0).datum().to_js_value().Datum.datum;
@@ -43,9 +42,10 @@ async function main(){
         const newM = fields[1].get('int');
         console.log("New Signers:", newSigners , "New M:", newM["$serde_json::private::Number"]);
         typeFound = true;
-      }
-      
-      try{
+    }
+    
+    try{
+      const cBTCAsset = txDetails.body().mint().get_assets(LucidEvolution.CML.ScriptHash.from_hex(LucidEvolution.mintingPolicyToId({ "type" : "PlutusV3", "script" :  protocolConfig.contract})))
       if(cBTCAsset !== undefined && cBTCAsset.get(LucidEvolution.CML.AssetName.from_hex(cBTCName)) !== undefined){
         console.log("!!!!!!Mint Tx!!!!!!!");
         if(txDetails.auxiliary_data() !== undefined){
