@@ -15,9 +15,10 @@ async function main(){
 
     const config = JSON.parse((await readFile('../config/cardanoConfig.json')).toString());
     const seed = JSON.parse((await readFile('../config/secrets.json')).toString());
+    const network = config.network.charAt(0).toUpperCase() + config.network.slice(1);
     const scriptConfig = JSON.parse((await readFile('./scriptsConfig.json')).toString());
     const provider = new Blockfrost(scriptConfig[config.network].blockfrost.url, scriptConfig[config.network].blockfrost.key)   
-    const lucid = await LucidEvolution.Lucid(provider, config.network);
+    const lucid = await LucidEvolution.Lucid(provider, network);
     lucid.selectWallet.fromSeed(seed.seed);
     const signature = (await lucid.wallet().signTx(LucidEvolution.CML.Transaction.from_cbor_hex(tx))).to_cbor_hex();
     console.log("Signature: ");
