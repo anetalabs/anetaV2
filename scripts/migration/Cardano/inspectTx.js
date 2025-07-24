@@ -20,6 +20,7 @@ const readFile = util.promisify(fs.readFile);
 
 async function main(){
     let warnings = ""
+    let typeFound = false;
     const config = JSON.parse((await readFile('../config/cardanoConfig.json')).toString());
     const protocolConfig = JSON.parse((await readFile('../config/protocolConfig.json')).toString());
     const adminToken = protocolConfig.adminToken;
@@ -41,8 +42,11 @@ async function main(){
         const newSigners = fields[0].get('list').map((item) => item.get('bytes'));
         const newM = fields[1].get('int');
         console.log("New Signers:", newSigners , "New M:", newM["$serde_json::private::Number"]);
+        typeFound = true;
       }
-    else if(cBTCAsset !== undefined && cBTCAsset.get(LucidEvolution.CML.AssetName.from_hex(cBTCName)) !== undefined){
+      
+      try{
+      if(cBTCAsset !== undefined && cBTCAsset.get(LucidEvolution.CML.AssetName.from_hex(cBTCName)) !== undefined){
         console.log("!!!!!!Mint Tx!!!!!!!");
         if(txDetails.auxiliary_data() !== undefined){
             const metadata = txDetails.auxiliary_data().metadata().get(721n).to_json();
@@ -55,15 +59,20 @@ async function main(){
                     console.log(`${item.k.string}: ${item.v.string}`);
                 });
             }
+            typeFound = true;
         }else{
             console.log("No Metadata");
         }
         console.log("\nAmount Minted:", Number(cBTCAsset.get(LucidEvolution.CML.AssetName.from_hex(cBTCName))));
+     }
+    }catch(e){
     }
-    else{
+    
+    if(!typeFound){
         console.log("!!!!!!Unknown Tx!!!!!!!");
         console.log(txDetails.to_json());
     }
+
     // const newconfig = txDetails.body().outputs().get(0).datum().to_js_value().Datum.datum;
     // const fields = newconfig.get('fields');
     // const newSigners = fields[0].get('list').map((item) => item.get('bytes'));
