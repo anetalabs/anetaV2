@@ -109,10 +109,10 @@ export class CardanoWatcher{
 
     async submitTransaction(tx: LucidEvolution.TxSigned){
         //this.lucid.provider.submitTx(tx.toString());     
-        console.log("Submitting: ", tx.toHash());
+        console.log("Submitting: ", tx.toHash(),  tx.toCBOR({canonical : true}));
         const txHex = tx.toCBOR({canonical : true});
         console.log("Tx Hex: ", txHex);
-
+        
         try{
             const url = this.config.utxoRpc.host.replace(":50051", ":30000") + "/tx/submit";
             console.log("Submitting to: ", url);
@@ -265,7 +265,7 @@ export class CardanoWatcher{
 
                 
                 try{
-                    const tx = await spendingTx.complete({  changeAddress: await this.getUtxoSender(txHash, index),  canonical: true, localUPLCEval : true});
+                    const tx = await spendingTx.complete({ setCollateral: 4_000_000n, changeAddress: await this.getUtxoSender(txHash, index),  canonical: true, localUPLCEval : true});
                     const signature = await  tx.partialSign.withWallet();
                     communicator.cardanoTxToComplete({type: "rejection", txId : tx.toHash(), signatures: [signature] , tx, status: "pending"});
                 }catch(e){
