@@ -118,7 +118,7 @@ export class CardanoWatcher{
             console.log("Submitting to: ", url);
           //  await axios.post( url, tx.toCBOR({canonical : true}), {headers: {"Content-Type": "application/cbor"}})
        //  await axios.post( "https://cardano-preprod.blockfrost.io/api/v0/tx/submit", Buffer.from(tx.toCBOR({canonical : true}), 'hex'), {headers: {"project_id": "preprod7jqmbnofXhcZkpOg01zcohiR3AeaEGJ2", "Content-Type": "application/cbor"}})   
-       await axios.post( "https://passthrough.broclan.io/tx/submit", Buffer.from(tx.toCBOR({canonical : true}), 'hex'), {headers: {"project_id": this.config.network, "Content-Type": "application/cbor"}})   
+       await axios.post( "https://passthrough.keypact.io/tx/submit", Buffer.from(tx.toCBOR({canonical : true}), 'hex'), {headers: {"project_id": this.config.network, "Content-Type": "application/cbor"}})   
        //await this.lucid.config().provider.submitTx(tx.toCBOR({canonical : true}));
         communicator.removeCardanoTransaction(tx.toHash());
     }catch(e){
@@ -265,7 +265,7 @@ export class CardanoWatcher{
 
                 
                 try{
-                    const tx = await spendingTx.complete({ setCollateral: 4_000_000n, changeAddress: await this.getUtxoSender(txHash, index),  canonical: true, localUPLCEval : true});
+                    const tx = await spendingTx.complete({  changeAddress: await this.getUtxoSender(txHash, index),  canonical: true, localUPLCEval : true});
                     const signature = await  tx.partialSign.withWallet();
                     communicator.cardanoTxToComplete({type: "rejection", txId : tx.toHash(), signatures: [signature] , tx, status: "pending"});
                 }catch(e){
