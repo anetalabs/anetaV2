@@ -253,7 +253,7 @@ export class CardanoWatcher{
 
                 const openRequests =await this.lucid.config().provider.getUtxos(this.address);
                 const request = openRequests.find( (request) => request.txHash === txHash && Number(request.outputIndex) === index);
-                console.log("request", request, this.configUtxo , quorum);
+                console.log("request", request, this.configUtxo , quorum, await this.lucid.wallet().getUtxos());
                 const spendingTx =  this.lucid.newTx()
                                               .attach.SpendingValidator(this.mintingScript)
                                               .collectFrom([request], LucidEvolution.Data.void() )
